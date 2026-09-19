@@ -13,16 +13,13 @@ import io
 import os
 from datetime import datetime
 import requests
-import json
 
 # =====================================================================
-# DÁN ĐƯỜNG LINK GOOGLE SHEETS CỦA BẠN VÀO GIỮA 2 DẤU NGOẶC KÉP Ở DÒNG DƯỚI:
 GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 # =====================================================================
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-# Tự động nâng cấp lên v3 để làm sạch dữ liệu cũ bị lỗi cấu trúc
 DATA_FILE = "database_congto_v3.csv"
 if not os.path.exists(DATA_FILE):
     pd.DataFrame(columns=["Ma_KH", "Ten_KH", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]).to_csv(DATA_FILE, index=False)
@@ -32,7 +29,6 @@ def load_ai_model():
     return easyocr.Reader(['en'], gpu=False)
 reader = load_ai_model()
 
-# --- XÁC THỰC ĐĂNG NHẬP ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -49,12 +45,11 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
-# --- CÁC HÀM XỬ LÝ ẢNH & GPS ---
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
     img = Image.open(image_file).convert("RGB")
-    img.thumbnail((250, 250)) # Thu nhỏ ảnh để web không bị nặng
+    img.thumbnail((250, 250))
     buffered = io.BytesIO()
     img.save(buffered, format="JPEG", quality=70)
     return base64.b64encode(buffered.getvalue()).decode()
@@ -98,7 +93,6 @@ def quet_ocr_ai(image_file):
     except: pass
     return None
 
-# --- MENU CHÍNH ---
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png", width=130)
     st.markdown("### 🛠️ Chế độ Hiện trường")
@@ -110,14 +104,21 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# 1. GIAO DIỆN CHỤP 2 ẢNH & GỬI DỮ LIỆU
+# GIAO DIỆN CHỤP ẢNH (ĐÃ THÊM NHẬP TAY KH)
 # ==========================================
 if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ NGOẠI TUYẾN")
     
-    ds_kh = ["PB06110009864|Nguyễn Thị Xanh", "PB06110009865|Trần Văn A", "PB06110009866|Lê Thị B"]
-    kh_chon = st.selectbox("📌 Chọn Khách hàng", ds_kh)
-    ma_kh, ten_kh = kh_chon.split("|")
+    # 1. NÂNG CẤP: CHUẨN BỊ CHO VIỆC NHẬP TAY KHÁCH HÀNG MỚI
+    ds_kh = ["-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --", "PB06110009864|Nguyễn Thị Xanh", "PB06110009865|Trần Văn A"]
+    kh_chon = st.selectbox("📌 Chọn Khách hàng có sẵn (Gõ để tìm kiếm):", ds_kh)
+    
+    if kh_chon == "-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --":
+        col_m, col_t = st.columns(2)
+        with col_m: ma_kh = st.text_input("Gõ Mã Khách Hàng (VD: PB06...)")
+        with col_t: ten_kh = st.text_input("Gõ Tên Khách Hàng (VD: Nguyễn Văn A)")
+    else:
+        ma_kh, ten_kh = kh_chon.split("|")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -128,7 +129,9 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
         if upload_mat: st.image(upload_mat, use_container_width=True)
         
     if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
-        if not upload_tru and not upload_mat:
+        if not ma_kh or not ten_kh:
+            st.error("Vui lòng điền đủ Mã KH và Tên KH!")
+        elif not upload_tru and not upload_mat:
             st.error("Vui lòng chụp ít nhất 1 bức ảnh!")
         else:
             with st.spinner("Đang bóc tách tọa độ và đồng bộ dữ liệu..."):
@@ -156,33 +159,29 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     except:
                         sheet_status = "Lưu offline (Mất mạng) 📴"
                         
-                    st.success(f"✅ Đã lưu trữ thành công! Nguồn: {info['src']}. Trạng thái: {sheet_status}")
+                    st.success(f"✅ Đã lưu trữ thành công! Trạng thái: {sheet_status}")
                     st.balloons()
                 else:
-                    st.error("❌ Không thể trích xuất tọa độ. Vui lòng bật định vị GPS trên điện thoại.")
+                    st.error("❌ Không thể trích xuất tọa độ.")
 
 # ==========================================
-# 2. BẢN ĐỒ: TÌM KIẾM TỐC BIẾN & HIỂN THỊ ẢNH
+# BẢN ĐỒ: SỬA LỖI LỆCH TỌA ĐỘ
 # ==========================================
 elif menu == "🗺️ Bản đồ hệ thống":
     st.markdown("## 🗺️ BẢN ĐỒ ĐỊNH VỊ CÔNG TƠ SPC")
     if df.empty:
         st.warning("Chưa có dữ liệu trạm đo nào.")
     else:
-        # --- TÍNH NĂNG TÌM KIẾM ĐỂ TỰ ĐỘNG BAY TỚI VỊ TRÍ ---
-        danh_sach_tim_kiem = ["-- Hiển thị tất cả toàn cảnh --"] + df['Ma_KH'].tolist()
-        kh_can_tim = st.selectbox("🔍 Tìm và định vị nhanh Khách hàng:", danh_sach_tim_kiem)
+        danh_sach_tim_kiem = ["-- Hiển thị tất cả --"] + df['Ma_KH'].tolist()
+        kh_can_tim = st.selectbox("🔍 Tìm và định vị nhanh Khách hàng (Nhấn vào và gõ chữ):", danh_sach_tim_kiem)
         
-        # Xác định tọa độ trung tâm và độ Zoom
-        if kh_can_tim != "-- Hiển thị tất cả toàn cảnh --":
+        if kh_can_tim != "-- Hiển thị tất cả --":
             kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
-            center_lat = kh_data['Lat']
-            center_lng = kh_data['Lng']
-            do_zoom = 18  # Phóng to sát mặt đất
+            center_lat, center_lng = kh_data['Lat'], kh_data['Lng']
+            do_zoom = 20  # Zoom sát mặt đất tối đa
         else:
-            center_lat = df['Lat'].mean()
-            center_lng = df['Lng'].mean()
-            do_zoom = 11  # Thu nhỏ để nhìn toàn cục
+            center_lat, center_lng = df['Lat'].mean(), df['Lng'].mean()
+            do_zoom = 11
             
         m = folium.Map(location=[center_lat, center_lng], zoom_start=do_zoom, tiles="cartodbpositron")
         cluster = MarkerCluster().add_to(m)
@@ -191,7 +190,6 @@ elif menu == "🗺️ Bản đồ hệ thống":
             html_tru = f'<img src="data:image/jpeg;base64,{row["Anh_Tru_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Tru_B64")) and row["Anh_Tru_B64"] else ""
             html_mat = f'<img src="data:image/jpeg;base64,{row["Anh_Mat_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"] else ""
             
-            # Khung Popup hiện ra khi Click vào (Gom 2 ảnh vào 1)
             popup_html = f"""
             <div style="width:240px; text-align:center; font-family:Arial;">
                 <b style="color:#e31837; font-size: 15px;">{row['Ma_KH']}</b><br>
@@ -207,13 +205,17 @@ elif menu == "🗺️ Bản đồ hệ thống":
             </div>
             """
             
-            # BIẾN HÌNH ẢNH MẶT CÔNG TƠ THÀNH CÁI GHIM TRÊN BẢN ĐỒ
+            # 2. KHẮC PHỤC LỖI LỆCH TỌA ĐỘ
             if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"]:
                 icon_url = f"data:image/jpeg;base64,{row['Anh_Mat_B64']}"
-                # Tạo Icon bằng hình ảnh thật
-                custom_icon = folium.CustomIcon(icon_image=icon_url, icon_size=(45, 60))
+                
+                # Thêm tham số icon_anchor=(22, 60) để cắm ĐÚNG CHÍNH GIỮA CẠNH DƯỚI BỨC ẢNH XUỐNG MẶT ĐẤT
+                custom_icon = folium.CustomIcon(
+                    icon_image=icon_url, 
+                    icon_size=(45, 60),
+                    icon_anchor=(22, 60) 
+                )
             else:
-                # Nếu lỡ chụp lỗi không có hình thì trả về ghim đỏ
                 custom_icon = folium.Icon(color="red", icon="bolt", prefix="fa")
                 
             folium.Marker(
@@ -225,9 +227,6 @@ elif menu == "🗺️ Bản đồ hệ thống":
             
         st_folium(m, width=1200, height=600, returned_objects=[])
 
-# ==========================================
-# 3. CƠ SỞ DỮ LIỆU
-# ==========================================
 elif menu == "📊 Cơ sở dữ liệu":
     st.markdown("## 📊 QUẢN LÝ DỮ LIỆU ĐIỂM ĐO")
     if not df.empty:
