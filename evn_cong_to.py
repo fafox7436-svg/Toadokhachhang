@@ -22,7 +22,7 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQC
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-DATA_FILE = "database_congto_cloud.csv"
+DATA_FILE = "database_congto_v2.csv"
 if not os.path.exists(DATA_FILE):
     pd.DataFrame(columns=["Ma_KH", "Ten_KH", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]).to_csv(DATA_FILE, index=False)
 
