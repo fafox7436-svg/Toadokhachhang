@@ -109,16 +109,22 @@ df = pd.read_csv(DATA_FILE)
 if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ NGOẠI TUYẾN")
     
-    # 1. NÂNG CẤP: CHUẨN BỊ CHO VIỆC NHẬP TAY KHÁCH HÀNG MỚI
+# 1. Khởi tạo giá trị mặc định để chống lỗi NameError tuyệt đối
+    ma_kh = ""
+    ten_kh = ""
+
     ds_kh = ["-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --", "PB06110009864|Nguyễn Thị Xanh", "PB06110009865|Trần Văn A"]
     kh_chon = st.selectbox("📌 Chọn Khách hàng có sẵn (Gõ để tìm kiếm):", ds_kh)
     
     if kh_chon == "-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --":
         col_m, col_t = st.columns(2)
-        with col_m: ma_kh = st.text_input("Gõ Mã Khách Hàng (VD: PB06...)")
-        with col_t: ten_kh = st.text_input("Gõ Tên Khách Hàng (VD: Nguyễn Văn A)")
+        with col_m: 
+            ma_kh = st.text_input("Gõ Mã Khách Hàng (VD: PB06...)")
+        with col_t: 
+            ten_kh = st.text_input("Gõ Tên Khách Hàng (VD: Nguyễn Văn A)")
     else:
-        ma_kh, ten_kh = kh_chon.split("|")
+        if "|" in kh_chon:
+            ma_kh, ten_kh = kh_chon.split("|")
     
     col1, col2 = st.columns(2)
     with col1:
