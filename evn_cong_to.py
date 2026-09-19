@@ -17,12 +17,13 @@ import json
 
 # =====================================================================
 # DÁN ĐƯỜNG LINK GOOGLE SHEETS CỦA BẠN VÀO GIỮA 2 DẤU NGOẶC KÉP Ở DÒNG DƯỚI:
-GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQCtFGvdVxOs8TXnZ34rYWf7F16SLHud8gtDRkQc1h66PxeWkC/exec"
+GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 # =====================================================================
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-DATA_FILE = "database_congto_v2.csv"
+# Tự động nâng cấp lên v3 để làm sạch dữ liệu cũ bị lỗi cấu trúc
+DATA_FILE = "database_congto_v3.csv"
 if not os.path.exists(DATA_FILE):
     pd.DataFrame(columns=["Ma_KH", "Ten_KH", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]).to_csv(DATA_FILE, index=False)
 
@@ -53,7 +54,7 @@ def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
     img = Image.open(image_file).convert("RGB")
-    img.thumbnail((250, 250))
+    img.thumbnail((250, 250)) # Thu nhỏ ảnh để web không bị nặng
     buffered = io.BytesIO()
     img.save(buffered, format="JPEG", quality=70)
     return base64.b64encode(buffered.getvalue()).decode()
@@ -75,7 +76,7 @@ def lay_gps_exif(image_file):
         lat, lng = to_deg(gps_info['GPSLatitude']), to_deg(gps_info['GPSLongitude'])
         if gps_info.get('GPSLatitudeRef') == 'S': lat = -lat
         if gps_info.get('GPSLongitudeRef') == 'W': lng = -lng
-        return {"lat": lat, "lng": lng, "src": "GPS Vệ tinh ngoại tuyến (EXIF)"}
+        return {"lat": lat, "lng": lng, "src": "GPS Vệ tinh (Camera)"}
     except: return None
 
 def quet_ocr_ai(image_file):
@@ -93,7 +94,7 @@ def quet_ocr_ai(image_file):
             d1, m1, s1, d2, m2, s2 = match.groups()
             lat = int(d1) + int(m1)/60 + float(s1.replace(',','.'))/3600
             lng = int(d2) + int(m2)/60 + float(s2.replace(',','.'))/3600
-            return {"lat": lat, "lng": lng, "src": "AI OCR cục bộ"}
+            return {"lat": lat, "lng": lng, "src": "AI OCR quét ảnh"}
     except: pass
     return None
 
@@ -109,7 +110,7 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# 1. GIAO DIỆN CHỤP 2 ẢNH & GỬI GOOGLE SHEETS
+# 1. GIAO DIỆN CHỤP 2 ẢNH & GỬI DỮ LIỆU
 # ==========================================
 if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ NGOẠI TUYẾN")
@@ -141,7 +142,6 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # [LUỒNG 1] LƯU LOCAL ĐẦY ĐỦ DATA VÀ HÌNH ẢNH
                     new_row = pd.DataFrame([{
                         "Ma_KH": ma_kh, "Ten_KH": ten_kh, "Lat": info['lat'], "Lng": info['lng'], 
                         "Nguon_Du_Lieu": info['src'], "Thoi_Gian": thoi_gian, 
@@ -149,19 +149,11 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     }])
                     new_row.to_csv(DATA_FILE, mode='a', header=not os.path.exists(DATA_FILE), index=False)
                     
-                    # [LUỒNG 2] ĐẨY LÊN GOOGLE SHEETS (ẨN DANH: KHÔNG ĐẨY TÊN VÀ ẢNH)
                     try:
-                        payload = {
-                            "Ma_KH": ma_kh,
-                            "Lat": info['lat'],
-                            "Lng": info['lng'],
-                            "Nguon": info['src'],
-                            "Thoi_Gian": thoi_gian
-                        }
-                        # Gửi ngầm dữ liệu đi. Đặt timeout=5s để lỡ mất mạng thì app không bị treo
+                        payload = {"Ma_KH": ma_kh, "Lat": info['lat'], "Lng": info['lng'], "Nguon": info['src'], "Thoi_Gian": thoi_gian}
                         requests.post(GOOGLE_SHEET_URL, json=payload, timeout=5)
                         sheet_status = "Đã đồng bộ Google Sheets ☁️"
-                    except Exception as e:
+                    except:
                         sheet_status = "Lưu offline (Mất mạng) 📴"
                         
                     st.success(f"✅ Đã lưu trữ thành công! Nguồn: {info['src']}. Trạng thái: {sheet_status}")
@@ -170,23 +162,39 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     st.error("❌ Không thể trích xuất tọa độ. Vui lòng bật định vị GPS trên điện thoại.")
 
 # ==========================================
-# 2. BẢN ĐỒ HIỂN THỊ 2 ẢNH CÙNG LÚC
+# 2. BẢN ĐỒ: TÌM KIẾM TỐC BIẾN & HIỂN THỊ ẢNH
 # ==========================================
 elif menu == "🗺️ Bản đồ hệ thống":
     st.markdown("## 🗺️ BẢN ĐỒ ĐỊNH VỊ CÔNG TƠ SPC")
     if df.empty:
         st.warning("Chưa có dữ liệu trạm đo nào.")
     else:
-        m = folium.Map(location=[10.73, 106.11], zoom_start=11, tiles="cartodbpositron")
+        # --- TÍNH NĂNG TÌM KIẾM ĐỂ TỰ ĐỘNG BAY TỚI VỊ TRÍ ---
+        danh_sach_tim_kiem = ["-- Hiển thị tất cả toàn cảnh --"] + df['Ma_KH'].tolist()
+        kh_can_tim = st.selectbox("🔍 Tìm và định vị nhanh Khách hàng:", danh_sach_tim_kiem)
+        
+        # Xác định tọa độ trung tâm và độ Zoom
+        if kh_can_tim != "-- Hiển thị tất cả toàn cảnh --":
+            kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
+            center_lat = kh_data['Lat']
+            center_lng = kh_data['Lng']
+            do_zoom = 18  # Phóng to sát mặt đất
+        else:
+            center_lat = df['Lat'].mean()
+            center_lng = df['Lng'].mean()
+            do_zoom = 11  # Thu nhỏ để nhìn toàn cục
+            
+        m = folium.Map(location=[center_lat, center_lng], zoom_start=do_zoom, tiles="cartodbpositron")
         cluster = MarkerCluster().add_to(m)
         
         for idx, row in df.iterrows():
             html_tru = f'<img src="data:image/jpeg;base64,{row["Anh_Tru_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Tru_B64")) and row["Anh_Tru_B64"] else ""
             html_mat = f'<img src="data:image/jpeg;base64,{row["Anh_Mat_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"] else ""
             
+            # Khung Popup hiện ra khi Click vào (Gom 2 ảnh vào 1)
             popup_html = f"""
             <div style="width:240px; text-align:center; font-family:Arial;">
-                <b style="color:#e31837;">{row['Ma_KH']}</b><br>
+                <b style="color:#e31837; font-size: 15px;">{row['Ma_KH']}</b><br>
                 <i style="font-size:12px; color:gray;">{row['Ten_KH']}</i><br>
                 <div style="display:flex; justify-content:center; gap:5px; margin-top:8px; margin-bottom:10px;">
                     {html_tru}
@@ -194,11 +202,26 @@ elif menu == "🗺️ Bản đồ hệ thống":
                 </div>
                 <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
                    style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; font-weight:bold;">
-                   🧭 CHỈ ĐƯỜNG
+                   🧭 CHỈ ĐƯỜNG ĐẾN CÔNG TƠ NÀY
                 </a>
             </div>
             """
-            folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=280), icon=folium.Icon(color="red", icon="bolt", prefix="fa")).add_to(cluster)
+            
+            # BIẾN HÌNH ẢNH MẶT CÔNG TƠ THÀNH CÁI GHIM TRÊN BẢN ĐỒ
+            if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"]:
+                icon_url = f"data:image/jpeg;base64,{row['Anh_Mat_B64']}"
+                # Tạo Icon bằng hình ảnh thật
+                custom_icon = folium.CustomIcon(icon_image=icon_url, icon_size=(45, 60))
+            else:
+                # Nếu lỡ chụp lỗi không có hình thì trả về ghim đỏ
+                custom_icon = folium.Icon(color="red", icon="bolt", prefix="fa")
+                
+            folium.Marker(
+                [row['Lat'], row['Lng']], 
+                popup=folium.Popup(popup_html, max_width=280), 
+                icon=custom_icon,
+                tooltip=row['Ma_KH']
+            ).add_to(cluster)
             
         st_folium(m, width=1200, height=600, returned_objects=[])
 
