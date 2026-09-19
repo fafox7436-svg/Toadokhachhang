@@ -128,7 +128,7 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
         upload_mat = st.file_uploader("🔎 2. Chụp cận cảnh MẶT SỐ", type=['jpg', 'jpeg', 'png'])
         if upload_mat: st.image(upload_mat, use_container_width=True)
         
-    if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
+if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
         if not ma_kh or not ten_kh:
             st.error("Vui lòng điền đủ Mã KH và Tên KH!")
         elif not upload_tru and not upload_mat:
@@ -145,13 +145,34 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    new_row = pd.DataFrame([{
-                        "Ma_KH": ma_kh, "Ten_KH": ten_kh, "Lat": info['lat'], "Lng": info['lng'], 
-                        "Nguon_Du_Lieu": info['src'], "Thoi_Gian": thoi_gian, 
-                        "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
-                    }])
-                    new_row.to_csv(DATA_FILE, mode='a', header=not os.path.exists(DATA_FILE), index=False)
+                    # --- BẮT ĐẦU CƠ CHẾ LƯU THÔNG MINH (CHỐNG TRÙNG LẶP) ---
+                    df_current = pd.read_csv(DATA_FILE)
                     
+                    # Kiểm tra xem Mã KH đã tồn tại trong file chưa?
+                    if ma_kh in df_current['Ma_KH'].values:
+                        # Nếu ĐÃ TỒN TẠI -> Tìm đúng dòng đó và Cập nhật (Ghi đè)
+                        idx = df_current[df_current['Ma_KH'] == ma_kh].index[0]
+                        df_current.at[idx, 'Lat'] = info['lat']
+                        df_current.at[idx, 'Lng'] = info['lng']
+                        df_current.at[idx, 'Nguon_Du_Lieu'] = info['src']
+                        df_current.at[idx, 'Thoi_Gian'] = thoi_gian
+                        df_current.at[idx, 'Anh_Tru_B64'] = b64_tru
+                        df_current.at[idx, 'Anh_Mat_B64'] = b64_mat
+                        df_current.at[idx, 'Ten_KH'] = ten_kh
+                    else:
+                        # Nếu CHƯA TỒN TẠI -> Tạo dòng mới
+                        new_row = pd.DataFrame([{
+                            "Ma_KH": ma_kh, "Ten_KH": ten_kh, "Lat": info['lat'], "Lng": info['lng'], 
+                            "Nguon_Du_Lieu": info['src'], "Thoi_Gian": thoi_gian, 
+                            "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
+                        }])
+                        df_current = pd.concat([df_current, new_row], ignore_index=True)
+                    
+                    # Lưu lại toàn bộ vào file CSV
+                    df_current.to_csv(DATA_FILE, index=False)
+                    # --- KẾT THÚC CƠ CHẾ LƯU THÔNG MINH ---
+                    
+                    # [LUỒNG 2] ĐẨY LÊN GOOGLE SHEETS
                     try:
                         payload = {"Ma_KH": ma_kh, "Lat": info['lat'], "Lng": info['lng'], "Nguon": info['src'], "Thoi_Gian": thoi_gian}
                         requests.post(GOOGLE_SHEET_URL, json=payload, timeout=5)
@@ -159,11 +180,10 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
                     except:
                         sheet_status = "Lưu offline (Mất mạng) 📴"
                         
-                    st.success(f"✅ Đã lưu trữ thành công! Trạng thái: {sheet_status}")
+                    st.success(f"✅ Đã cập nhật thành công 1 Công tơ! Trạng thái: {sheet_status}")
                     st.balloons()
                 else:
                     st.error("❌ Không thể trích xuất tọa độ.")
-
 # ==========================================
 # BẢN ĐỒ: SỬA LỖI LỆCH TỌA ĐỘ
 # ==========================================
