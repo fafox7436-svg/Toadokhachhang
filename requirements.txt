@@ -6,3 +6,4 @@ easyocr
 opencv-python-headless
 numpy
 Pillow
+requests
