@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static  
+import streamlit.components.v1 as components  # KỸ THUẬT NHÚNG HTML SÂU (CHỐNG CHỚP TẮT)
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -20,12 +20,10 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQC
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-# BẢN V8: NÂNG CẤP CHẤT LƯỢNG ẢNH HD & TÍNH NĂNG CLICK ZOOM ẢNH
 DATA_FILE = "database_congto_v8.csv"
 
 # --- HÀM TẠO DỮ LIỆU GIẢ LẬP ĐỂ TEST ---
 def tao_du_lieu_mau():
-    # Sử dụng ảnh logo EVN bản HD (1024px) để test độ sắc nét
     url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png"
     sample_b64 = base64.b64encode(requests.get(url).content).decode()
     
@@ -62,7 +60,6 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
-# ĐÃ FIX: TĂNG ĐỘ PHÂN GIẢI LÊN 1024x1024 (HD) VÀ TĂNG CHẤT LƯỢNG ẢNH LÊN 85%
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
@@ -142,7 +139,7 @@ df = pd.read_csv(DATA_FILE)
 if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    st.info("💡 Bạn đang dùng bản Demo. Đã nạp sẵn 3 Trạm và 5 Khách hàng mẫu để test!")
+    st.info("💡 Gõ Mã/Tên KH để lấy dữ liệu có sẵn. Lưu ý: Bản Demo đã nạp sẵn 5 Khách hàng mẫu!")
     danh_sach_da_co = [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
     ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
     kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
@@ -268,11 +265,13 @@ elif menu == "🗺️ Bản đồ NR-KH":
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
-        danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + df['Ma_KH'].tolist()
-        kh_can_tim = st.selectbox("🔍 Gõ Mã/Tên Khách hàng để định vị nhanh:", danh_sach_tim_kiem)
+        # ĐÃ KHÔI PHỤC LẠI THANH TÌM KIẾM ĐẦY ĐỦ TÊN + MÃ KHÁCH HÀNG 
+        danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
+        kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem)
         
         if kh_can_tim != "-- Hiển thị toàn cảnh --":
-            kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
+            ma_kh_tim = kh_can_tim.split(" | ")[0]
+            kh_data = df[df['Ma_KH'] == ma_kh_tim].iloc[-1]
             center_lat, center_lng, do_zoom = kh_data['Lat'], kh_data['Lng'], 20
         else:
             center_lat, center_lng, do_zoom = df['Lat'].mean(), df['Lng'].mean(), 11
@@ -281,19 +280,19 @@ elif menu == "🗺️ Bản đồ NR-KH":
         cluster = MarkerCluster().add_to(m)
         
         for idx, row in df.iterrows():
-            # XỬ LÝ ẢNH TRONG POPUP: THÊM LỆNH JAVASCRIPT ĐỂ CLICK PHÓNG TO ẢNH
             b64_tru = row.get("Anh_Tru_B64", "")
             b64_mat = row.get("Anh_Mat_B64", "")
             
+            # FIX LỖI TẮT BẢNG KHI XEM ẢNH: SỬ DỤNG THẺ LINK MẶC ĐỊNH CỦA TRÌNH DUYỆT (THẺ <a>)
             html_tru = ""
             if pd.notna(b64_tru) and b64_tru:
-                js_tru = f"var w=window.open(); w.document.write(\"<title>Anh Tru</title><img src='data:image/jpeg;base64,{b64_tru}' style='max-width:100%; display:block; margin:auto;'>\");"
-                html_tru = f'<img src="data:image/jpeg;base64,{b64_tru}" onclick=\'{js_tru}\' style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để xem ảnh cực lớn">'
+                img_src = f"data:image/jpeg;base64,{b64_tru}"
+                html_tru = f'<a href="{img_src}" target="_blank"><img src="{img_src}" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Trụ"></a>'
                 
             html_mat = ""
             if pd.notna(b64_mat) and b64_mat:
-                js_mat = f"var w=window.open(); w.document.write(\"<title>Anh Mat Cong To</title><img src='data:image/jpeg;base64,{b64_mat}' style='max-width:100%; display:block; margin:auto;'>\");"
-                html_mat = f'<img src="data:image/jpeg;base64,{b64_mat}" onclick=\'{js_mat}\' style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để xem ảnh cực lớn">'
+                img_src = f"data:image/jpeg;base64,{b64_mat}"
+                html_mat = f'<a href="{img_src}" target="_blank"><img src="{img_src}" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Mặt Công Tơ"></a>'
             
             popup_html = f"""
             <div style="width:310px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
@@ -329,7 +328,9 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
-        folium_static(m, width=1200, height=600)
+        # FIX LỖI BẢN ĐỒ CHỚP TẮT KHI BẤM: NHÚNG HTML SÂU BẰNG IFRAME
+        map_html = m.get_root().render()
+        components.html(map_html, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
     st.markdown("## 📊 DỮ LIỆU ĐỒNG BỘ NR-KH")
