@@ -15,7 +15,7 @@ from datetime import datetime
 import requests
 
 # =====================================================================
-GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
+GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQCtFGvdVxOs8TXnZ34rYWf7F16SLHud8gtDRkQc1h66PxeWkC/exec"
 # =====================================================================
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
