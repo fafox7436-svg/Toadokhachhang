@@ -227,9 +227,12 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     if is_exist:
                         idx = df[df['Ma_KH'] == in_ma_kh].index[0]
                         for key, val in row_data.items():
+                            # Ép kiểu cột thành Object để cho phép lưu cả Số, Chữ và chuỗi Base64 dài
+                            df[key] = df[key].astype(object) 
                             df.at[idx, key] = val
                     else:
                         df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
+                    
                     df.to_csv(DATA_FILE, index=False)
                     
                     st.success(f"✅ Thành công! Tọa độ quét từ: {info['src']}")
