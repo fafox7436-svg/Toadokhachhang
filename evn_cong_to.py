@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static  # <-- DÙNG HÀM NÀY ĐỂ FIX LỖI BIẾN MẤT POPUP
+from streamlit_folium import folium_static  
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -24,7 +24,6 @@ DATA_FILE = "database_congto_v7.csv"
 
 # --- HÀM TẠO DỮ LIỆU GIẢ LẬP ĐỂ TEST ---
 def tao_du_lieu_mau():
-    # Sử dụng ảnh icon EVN làm ảnh mẫu base64 cho nhẹ
     url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/150px-Logo_EVN.svg.png"
     sample_b64 = base64.b64encode(requests.get(url).content).decode()
     
@@ -38,7 +37,7 @@ def tao_du_lieu_mau():
     pd.DataFrame(mock_data).to_csv(DATA_FILE, index=False)
 
 if not os.path.exists(DATA_FILE):
-    tao_du_lieu_mau() # Tự động gọi hàm tạo dữ liệu mẫu lần đầu tiên
+    tao_du_lieu_mau() 
 
 @st.cache_resource
 def load_ai_model():
@@ -266,10 +265,11 @@ elif menu == "🗺️ Bản đồ NR-KH":
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
-        danh_sach_tim_kiem = ["-- Hiển thị tất cả --"] + df['Ma_KH'].tolist()
-        kh_can_tim = st.selectbox("🔍 Tìm khách hàng để zoom đến:", danh_sach_tim_kiem)
+        # --- TÍNH NĂNG TÌM KIẾM ĐỂ TỰ ĐỘNG BAY TỚI VỊ TRÍ ---
+        danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + df['Ma_KH'].tolist()
+        kh_can_tim = st.selectbox("🔍 Gõ Mã/Tên Khách hàng để định vị nhanh:", danh_sach_tim_kiem)
         
-        if kh_can_tim != "-- Hiển thị tất cả --":
+        if kh_can_tim != "-- Hiển thị toàn cảnh --":
             kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
             center_lat, center_lng, do_zoom = kh_data['Lat'], kh_data['Lng'], 20
         else:
@@ -282,6 +282,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
             html_tru = f'<img src="data:image/jpeg;base64,{row.get("Anh_Tru_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Tru_B64")) and row.get("Anh_Tru_B64") else ""
             html_mat = f'<img src="data:image/jpeg;base64,{row.get("Anh_Mat_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64") else ""
             
+            # --- ĐÃ BỔ SUNG LẠI NÚT CHỈ ĐƯỜNG BỊ MẤT Ở DƯỚI CÙNG ---
             popup_html = f"""
             <div style="width:300px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
                 <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
@@ -302,6 +303,10 @@ elif menu == "🗺️ Bản đồ NR-KH":
                     {html_tru}
                     {html_mat}
                 </div>
+                <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
+                   style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
+                   🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
+                </a>
             </div>
             """
             
@@ -312,7 +317,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=320), icon=custom_icon).add_to(cluster)
             
-        # FIX LỖI TẮT BẢNG THÔNG TIN: THAY BẰNG folium_static
+        # DÙNG HÀM folium_static ĐỂ FIX LỖI TẮT BẢNG THÔNG TIN
         folium_static(m, width=1200, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
