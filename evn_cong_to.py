@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-import streamlit.components.v1 as components  
+from streamlit_folium import folium_static  # KHÔI PHỤC LẠI HÀM NÀY ĐỂ TÌM KIẾM HOẠT ĐỘNG
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -40,13 +40,9 @@ def load_ai_model():
     return easyocr.Reader(['en'], gpu=False)
 reader = load_ai_model()
 
-# ==========================================
-# CƠ CHẾ ĐĂNG NHẬP (CÓ DUY TRÌ PHIÊN)
-# ==========================================
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Kiểm tra xem trên link URL có chứa thẻ bài "duy trì đăng nhập" không
 if st.query_params.get("auth_token") == "evnspc_admin_2026_valid":
     st.session_state.authenticated = True
 
@@ -55,19 +51,15 @@ if not st.session_state.authenticated:
     with st.form("login"):
         u = st.text_input("Tài khoản")
         p = st.text_input("Mật khẩu", type="password")
-        # Thêm nút Ghi nhớ
         ghi_nho = st.checkbox("🔄 Ghi nhớ đăng nhập trên thiết bị này")
         if st.form_submit_button("Đăng nhập"):
             if u == "admin" and p == "evnspc2026":
                 st.session_state.authenticated = True
-                if ghi_nho:
-                    # Gắn Token duy trì vào thanh URL
-                    st.query_params["auth_token"] = "evnspc_admin_2026_valid"
+                if ghi_nho: st.query_params["auth_token"] = "evnspc_admin_2026_valid"
                 st.rerun()
             else:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
-# ==========================================
 
 def nen_anh_base64(image_file):
     if not image_file: return ""
@@ -140,7 +132,6 @@ with st.sidebar:
     st.markdown("### 🛠️ Chế độ Hiện trường")
     menu = st.radio("Điều hướng:", ["📸 Cập nhật Công tơ (Đầy đủ)", "🗺️ Bản đồ NR-KH", "📊 Cơ sở dữ liệu"])
     if st.button("Đăng xuất"):
-        # Bấm đăng xuất sẽ thu hồi phiên và xóa URL Token
         st.session_state.authenticated = False
         st.query_params.clear()
         st.rerun()
@@ -221,7 +212,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         
     xac_nhan_ghi_de = True
     if is_exist and in_ma_kh != "":
-        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu (Phù hợp cho Thay định kỳ/Hư hỏng).")
+        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu.")
         xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận CẬP NHẬT thông tin mới")
 
     if st.button("⚡ LƯU & ĐỒNG BỘ", type="primary", use_container_width=True):
@@ -276,6 +267,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
+        # TÍNH NĂNG TÌM KIẾM ĐÃ SỐNG LẠI!
         danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
         kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem)
         
@@ -293,15 +285,26 @@ elif menu == "🗺️ Bản đồ NR-KH":
             b64_tru = row.get("Anh_Tru_B64", "")
             b64_mat = row.get("Anh_Mat_B64", "")
             
+            # CÔNG NGHỆ LIGHTBOX CSS (BẤM VÀO ẢNH PHÓNG TO NGAY TRONG BẢN ĐỒ, CHỐNG TRÌNH DUYỆT CHẶN)
             html_tru = ""
             if pd.notna(b64_tru) and b64_tru:
                 img_src = f"data:image/jpeg;base64,{b64_tru}"
-                html_tru = f'<a href="{img_src}" target="_blank"><img src="{img_src}" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Trụ"></a>'
+                html_tru = f"""
+                <img src="{img_src}" onclick="document.getElementById('modal_tru_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Trụ">
+                <div id="modal_tru_{idx}" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:9999; cursor:zoom-out; text-align:center;" onclick="this.style.display='none'">
+                    <img src="{img_src}" style="max-width:95%; max-height:95%; position:relative; top:50%; transform:translateY(-50%); border: 3px solid white; border-radius: 5px;">
+                </div>
+                """
                 
             html_mat = ""
             if pd.notna(b64_mat) and b64_mat:
                 img_src = f"data:image/jpeg;base64,{b64_mat}"
-                html_mat = f'<a href="{img_src}" target="_blank"><img src="{img_src}" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Mặt Công Tơ"></a>'
+                html_mat = f"""
+                <img src="{img_src}" onclick="document.getElementById('modal_mat_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Mặt Công Tơ">
+                <div id="modal_mat_{idx}" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:9999; cursor:zoom-out; text-align:center;" onclick="this.style.display='none'">
+                    <img src="{img_src}" style="max-width:95%; max-height:95%; position:relative; top:50%; transform:translateY(-50%); border: 3px solid white; border-radius: 5px;">
+                </div>
+                """
             
             popup_html = f"""
             <div style="width:310px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
@@ -318,7 +321,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
                 <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
                 <hr style="margin: 10px 0;">
-                <b style="color:#e31837;">📸 Hình ảnh hiện trường (Ấn vào ảnh để phóng to HD):</b>
+                <b style="color:#e31837;">📸 Hình ảnh (Ấn vào ảnh để phóng to):</b>
                 <div style="display:flex; justify-content:center; gap:8px; margin-top:5px; margin-bottom:10px;">
                     {html_tru}
                     {html_mat}
@@ -337,8 +340,8 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
-        map_html = m.get_root().render()
-        components.html(map_html, height=600)
+        # DÙNG LẠI FOLIUM STATIC ĐỂ Ô TÌM KIẾM ĐƯỢC PHÉP ĐIỀU KHIỂN BẢN ĐỒ
+        folium_static(m, width=1200, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
     st.markdown("## 📊 DỮ LIỆU ĐỒNG BỘ NR-KH")
