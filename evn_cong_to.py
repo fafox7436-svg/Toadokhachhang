@@ -20,11 +20,13 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQC
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-DATA_FILE = "database_congto_v7.csv"
+# BẢN V8: NÂNG CẤP CHẤT LƯỢNG ẢNH HD & TÍNH NĂNG CLICK ZOOM ẢNH
+DATA_FILE = "database_congto_v8.csv"
 
 # --- HÀM TẠO DỮ LIỆU GIẢ LẬP ĐỂ TEST ---
 def tao_du_lieu_mau():
-    url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/150px-Logo_EVN.svg.png"
+    # Sử dụng ảnh logo EVN bản HD (1024px) để test độ sắc nét
+    url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png"
     sample_b64 = base64.b64encode(requests.get(url).content).decode()
     
     mock_data = [
@@ -60,13 +62,14 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
+# ĐÃ FIX: TĂNG ĐỘ PHÂN GIẢI LÊN 1024x1024 (HD) VÀ TĂNG CHẤT LƯỢNG ẢNH LÊN 85%
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
     img = Image.open(image_file).convert("RGB")
-    img.thumbnail((250, 250))
+    img.thumbnail((1024, 1024)) 
     buffered = io.BytesIO()
-    img.save(buffered, format="JPEG", quality=70)
+    img.save(buffered, format="JPEG", quality=85)
     return base64.b64encode(buffered.getvalue()).decode()
 
 def lay_gps_exif(image_file):
@@ -265,7 +268,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
-        # --- TÍNH NĂNG TÌM KIẾM ĐỂ TỰ ĐỘNG BAY TỚI VỊ TRÍ ---
         danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + df['Ma_KH'].tolist()
         kh_can_tim = st.selectbox("🔍 Gõ Mã/Tên Khách hàng để định vị nhanh:", danh_sach_tim_kiem)
         
@@ -279,12 +281,22 @@ elif menu == "🗺️ Bản đồ NR-KH":
         cluster = MarkerCluster().add_to(m)
         
         for idx, row in df.iterrows():
-            html_tru = f'<img src="data:image/jpeg;base64,{row.get("Anh_Tru_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Tru_B64")) and row.get("Anh_Tru_B64") else ""
-            html_mat = f'<img src="data:image/jpeg;base64,{row.get("Anh_Mat_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64") else ""
+            # XỬ LÝ ẢNH TRONG POPUP: THÊM LỆNH JAVASCRIPT ĐỂ CLICK PHÓNG TO ẢNH
+            b64_tru = row.get("Anh_Tru_B64", "")
+            b64_mat = row.get("Anh_Mat_B64", "")
             
-            # --- ĐÃ BỔ SUNG LẠI NÚT CHỈ ĐƯỜNG BỊ MẤT Ở DƯỚI CÙNG ---
+            html_tru = ""
+            if pd.notna(b64_tru) and b64_tru:
+                js_tru = f"var w=window.open(); w.document.write(\"<title>Anh Tru</title><img src='data:image/jpeg;base64,{b64_tru}' style='max-width:100%; display:block; margin:auto;'>\");"
+                html_tru = f'<img src="data:image/jpeg;base64,{b64_tru}" onclick=\'{js_tru}\' style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để xem ảnh cực lớn">'
+                
+            html_mat = ""
+            if pd.notna(b64_mat) and b64_mat:
+                js_mat = f"var w=window.open(); w.document.write(\"<title>Anh Mat Cong To</title><img src='data:image/jpeg;base64,{b64_mat}' style='max-width:100%; display:block; margin:auto;'>\");"
+                html_mat = f'<img src="data:image/jpeg;base64,{b64_mat}" onclick=\'{js_mat}\' style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để xem ảnh cực lớn">'
+            
             popup_html = f"""
-            <div style="width:300px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+            <div style="width:310px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
                 <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
                     Xem sản lượng
                 </div>
@@ -298,7 +310,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
                 <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
                 <hr style="margin: 10px 0;">
-                <b style="color:#e31837;">📸 Hình ảnh hiện trường:</b>
+                <b style="color:#e31837;">📸 Hình ảnh hiện trường (Ấn vào ảnh để phóng to HD):</b>
                 <div style="display:flex; justify-content:center; gap:8px; margin-top:5px; margin-bottom:10px;">
                     {html_tru}
                     {html_mat}
@@ -310,14 +322,13 @@ elif menu == "🗺️ Bản đồ NR-KH":
             </div>
             """
             
-            if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64"):
-                custom_icon = folium.CustomIcon(icon_image=f"data:image/jpeg;base64,{row['Anh_Mat_B64']}", icon_size=(40, 55), icon_anchor=(20, 55))
+            if pd.notna(b64_mat) and b64_mat:
+                custom_icon = folium.CustomIcon(icon_image=f"data:image/jpeg;base64,{b64_mat}", icon_size=(40, 55), icon_anchor=(20, 55))
             else:
                 custom_icon = folium.Icon(color="blue", icon="info-sign")
                 
-            folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=320), icon=custom_icon).add_to(cluster)
+            folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
-        # DÙNG HÀM folium_static ĐỂ FIX LỖI TẮT BẢNG THÔNG TIN
         folium_static(m, width=1200, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
