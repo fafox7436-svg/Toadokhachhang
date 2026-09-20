@@ -15,14 +15,15 @@ from datetime import datetime
 import requests
 
 # =====================================================================
-GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQCtFGvdVxOs8TXnZ34rYWf7F16SLHud8gtDRkQc1h66PxeWkC/exec"
+GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 # =====================================================================
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-DATA_FILE = "database_congto_v4.csv"
+# BẢN V5: BỎ CỘT "DANH SỐ" VÀ THÊM TÍNH NĂNG DỊCH NGƯỢC ĐỊA CHỈ TỪ TỌA ĐỘ
+DATA_FILE = "database_congto_v5.csv"
 if not os.path.exists(DATA_FILE):
-    cols = ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "Dia_Chi", "So_No", "Danh_So", "Vi_Tri_Treo", "So_Tru", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]
+    cols = ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "Dia_Chi", "So_No", "Vi_Tri_Treo", "So_Tru", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]
     pd.DataFrame(columns=cols).to_csv(DATA_FILE, index=False)
 
 @st.cache_resource
@@ -46,6 +47,7 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
+# --- HÀM XỬ LÝ ẢNH & GPS ---
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
@@ -94,6 +96,20 @@ def quet_ocr_ai(image_file):
     except: pass
     return None
 
+# --- HÀM TỰ ĐỘNG DỊCH TỌA ĐỘ RA ĐỊA CHỈ (REVERSE GEOCODING) ---
+def lay_dia_chi_tu_toa_do(lat, lng):
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lng}&format=json"
+        headers = {'User-Agent': 'EVN_SPC_App/1.0'}
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # Trả về địa chỉ chi tiết do vệ tinh quét được
+            return data.get('display_name', '')
+    except:
+        pass
+    return ""
+
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png", width=130)
     st.markdown("### 🛠️ Chế độ Hiện trường")
@@ -105,45 +121,37 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# GIAO DIỆN NHẬP LIỆU THÔNG MINH (Tự động điền & Gợi ý)
+# GIAO DIỆN NHẬP LIỆU
 # ==========================================
 if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    # 1. THANH TÌM KIẾM KHÁCH HÀNG (Cho nghiệp vụ Thay định kỳ / Hư hỏng)
-    st.info("💡 Hướng dẫn: \n- **Gắn mới:** Chọn '-- TẠO MỚI KHÁCH HÀNG --'.\n- **Thay định kỳ/Hư hỏng:** Gõ tên/mã KH vào ô dưới để tìm, toàn bộ thông tin sẽ được điền sẵn.")
+    st.info("💡 Hướng dẫn: \n- **Gắn mới:** Chọn '-- TẠO MỚI KHÁCH HÀNG --'.\n- **Thay định kỳ/Hư hỏng:** Gõ tên/mã KH vào ô dưới để tìm, thông tin sẽ được điền sẵn.\n- **Địa chỉ:** Hệ thống sẽ tự động lấy từ tọa độ vệ tinh khi bấm Lưu.")
+    
     danh_sach_da_co = [f"{row['Ma_KH']}|{row['Ten_KH']}" for _, row in df.iterrows()]
     ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
     kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
     
-    # Chuẩn bị danh sách Trạm gợi ý (Lọc bỏ các giá trị rỗng/NaN)
     list_ma_tram = ["-- THÊM MÃ TRẠM MỚI --"] + [str(x) for x in df['Ma_Tram'].dropna().unique() if str(x).strip() != '']
     list_ten_tram = ["-- THÊM TÊN TRẠM MỚI --"] + [str(x) for x in df['Ten_Tram'].dropna().unique() if str(x).strip() != '']
     
-    # Các biến chứa thông tin khởi tạo rỗng
-    ma_kh = ten_kh = dia_chi = so_no = danh_so = so_tru = ""
-    # Biến vị trí treo mặc định
+    ma_kh = ten_kh = dia_chi = so_no = so_tru = ""
     idx_vitri = 0
-    # Biến trạm mặc định
     idx_ma_tram = 0
     idx_ten_tram = 0
     
-    # NẾU CHỌN KH CŨ -> TỰ ĐỘNG LẤY DATA CŨ ĐỂ ĐIỀN VÀO FORM
     if kh_chon != "-- TẠO MỚI KHÁCH HÀNG --":
         ma_kh_chon = kh_chon.split("|")[0]
         row_data = df[df['Ma_KH'] == ma_kh_chon].iloc[-1]
         
         ma_kh = str(row_data.get('Ma_KH', ''))
         ten_kh = str(row_data.get('Ten_KH', ''))
-        dia_chi = str(row_data.get('Dia_Chi', ''))
+        dia_chi = str(row_data.get('Dia_Chi', '')) # Sẽ bị ghi đè nếu có tọa độ mới
         so_no = str(row_data.get('So_No', ''))
-        danh_so = str(row_data.get('Danh_So', ''))
         so_tru = str(row_data.get('So_Tru', ''))
         
-        # Thiết lập lại Menu Vị trí treo
         if str(row_data.get('Vi_Tri_Treo', '')) == "Khác": idx_vitri = 1
             
-        # Thiết lập lại Menu Trạm
         old_ma_tram = str(row_data.get('Ma_Tram', ''))
         if old_ma_tram in list_ma_tram: idx_ma_tram = list_ma_tram.index(old_ma_tram)
         
@@ -157,27 +165,24 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
             in_ma_kh = st.text_input("Mã KH (*Bắt buộc)", value=ma_kh)
             in_ten_kh = st.text_input("Tên KH (*Bắt buộc)", value=ten_kh)
             
-            # Form Gợi ý Mã Trạm
             chon_ma_tram = st.selectbox("Mã Trạm (Chọn hoặc Tạo mới)", list_ma_tram, index=idx_ma_tram)
             if chon_ma_tram == "-- THÊM MÃ TRẠM MỚI --":
                 in_ma_tram = st.text_input("✍️ Gõ Mã Trạm Mới:")
             else:
                 in_ma_tram = chon_ma_tram
                 
-            in_dia_chi = st.text_input("Địa chỉ", value=dia_chi)
+            # Ô địa chỉ bị mờ đi (disabled) để cảnh báo người dùng hệ thống sẽ tự động điền
+            in_dia_chi = st.text_input("Địa chỉ (Sẽ tự động cập nhật theo vệ tinh)", value=dia_chi, disabled=True)
             
         with c2:
             in_so_no = st.text_input("Số No (Số đồng hồ)", value=so_no)
-            in_danh_so = st.text_input("Danh số (Lộ trình)", value=danh_so)
             
-            # Form Gợi ý Tên Trạm
             chon_ten_tram = st.selectbox("Tên Trạm (Chọn hoặc Tạo mới)", list_ten_tram, index=idx_ten_tram)
             if chon_ten_tram == "-- THÊM TÊN TRẠM MỚI --":
                 in_ten_tram = st.text_input("✍️ Gõ Tên Trạm Mới (VD: G070- UB Thuận Bình):")
             else:
                 in_ten_tram = chon_ten_tram
                 
-            # Form Menu Vị trí treo (Chỉ cho phép 2 lựa chọn)
             in_vi_tri_treo = st.selectbox("Vị trí treo", ["Tại trụ", "Khác"], index=idx_vitri)
             in_so_tru = st.text_input("Số Trụ (VD: T128)", value=so_tru)
 
@@ -206,7 +211,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         elif is_exist and not xac_nhan_ghi_de:
             st.error("Vui lòng tick xác nhận ghi đè/cập nhật!")
         else:
-            with st.spinner("Đang bóc tách tọa độ và xử lý..."):
+            with st.spinner("Đang phân tích tọa độ và dò tìm Địa chỉ vệ tinh..."):
                 anh_chinh = upload_mat if upload_mat else upload_tru
                 info = lay_gps_exif(anh_chinh)
                 if not info: info = quet_ocr_ai(anh_chinh)
@@ -216,9 +221,14 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
+                    # --- TỰ ĐỘNG DỊCH TỌA ĐỘ RA ĐỊA CHỈ THỰC TẾ ---
+                    dia_chi_tu_dong = lay_dia_chi_tu_toa_do(info['lat'], info['lng'])
+                    if dia_chi_tu_dong == "":
+                        dia_chi_tu_dong = dia_chi # Nếu mất mạng thì giữ địa chỉ cũ
+                    
                     row_data = {
                         "Ma_Tram": in_ma_tram, "Ten_Tram": in_ten_tram, "Ma_KH": in_ma_kh, "Ten_KH": in_ten_kh,
-                        "Dia_Chi": in_dia_chi, "So_No": in_so_no, "Danh_So": in_danh_so, 
+                        "Dia_Chi": dia_chi_tu_dong, "So_No": in_so_no, 
                         "Vi_Tri_Treo": in_vi_tri_treo, "So_Tru": in_so_tru,
                         "Lat": info['lat'], "Lng": info['lng'], "Nguon_Du_Lieu": info['src'], 
                         "Thoi_Gian": thoi_gian, "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
@@ -227,21 +237,19 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     if is_exist:
                         idx = df[df['Ma_KH'] == in_ma_kh].index[0]
                         for key, val in row_data.items():
-                            # Ép kiểu cột thành Object để cho phép lưu cả Số, Chữ và chuỗi Base64 dài
                             df[key] = df[key].astype(object) 
                             df.at[idx, key] = val
                     else:
                         df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
-                    
                     df.to_csv(DATA_FILE, index=False)
                     
-                    st.success(f"✅ Thành công! Tọa độ quét từ: {info['src']}")
+                    st.success(f"✅ Thành công! Hệ thống đã tự động định vị địa chỉ: **{dia_chi_tu_dong}**")
                     st.balloons()
                 else:
                     st.error("❌ Không thể lấy tọa độ từ ảnh này.")
 
 # ==========================================
-# BẢN ĐỒ (GIỮ NGUYÊN GIAO DIỆN XỊN SÒ)
+# BẢN ĐỒ (BỎ DANH SỐ, CẬP NHẬT ĐỊA CHỈ TỰ ĐỘNG)
 # ==========================================
 elif menu == "🗺️ Bản đồ NR-KH":
     st.markdown("## 🗺️ SƠ ĐỒ ĐƠN TUYẾN - TÍCH HỢP AI")
@@ -264,6 +272,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
             html_tru = f'<img src="data:image/jpeg;base64,{row.get("Anh_Tru_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Tru_B64")) and row.get("Anh_Tru_B64") else ""
             html_mat = f'<img src="data:image/jpeg;base64,{row.get("Anh_Mat_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64") else ""
             
+            # CẬP NHẬT GIAO DIỆN BẢNG THÔNG TIN: ĐÃ XÓA DANH SỐ
             popup_html = f"""
             <div style="width:300px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
                 <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
@@ -275,7 +284,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 <b>Mã KH:</b> {row.get('Ma_KH', '')}<br>
                 <b>ĐC:</b> {row.get('Dia_Chi', '')}<br>
                 <b>Số No:</b> {row.get('So_No', '')}<br>
-                <b>Danh số:</b> {row.get('Danh_So', '')}<br>
                 <b>Vị trí treo:</b> {row.get('Vi_Tri_Treo', '')}<br>
                 <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
                 <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
@@ -286,6 +294,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
                     {html_tru}
                     {html_mat}
                 </div>
+                
                 <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
                    style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
                    🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
