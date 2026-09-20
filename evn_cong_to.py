@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-from streamlit_folium import st_folium
+from streamlit_folium import folium_static  # <-- DÙNG HÀM NÀY ĐỂ FIX LỖI BIẾN MẤT POPUP
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -20,11 +20,25 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQC
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-# BẢN V6: SẮP XẾP LẠI CỘT MÃ TRẠM & TÊN TRẠM ĐỨNG CẠNH NHAU
-DATA_FILE = "database_congto_v6.csv"
+DATA_FILE = "database_congto_v7.csv"
+
+# --- HÀM TẠO DỮ LIỆU GIẢ LẬP ĐỂ TEST ---
+def tao_du_lieu_mau():
+    # Sử dụng ảnh icon EVN làm ảnh mẫu base64 cho nhẹ
+    url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/150px-Logo_EVN.svg.png"
+    sample_b64 = base64.b64encode(requests.get(url).content).decode()
+    
+    mock_data = [
+        {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002271", "Ten_KH": "Bùi Văn Hội", "So_No": "21347524", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T128", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.737803, "Lng": 106.235706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+        {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002272", "Ten_KH": "Lê Thị Xuân", "So_No": "21347525", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T129", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.738803, "Lng": 106.236706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:15:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+        {"Ma_Tram": "061150111", "Ten_Tram": "T011- Trạm Bơm Hưng Điền", "Ma_KH": "PB06110003333", "Ten_KH": "Nguyễn Văn Đang", "So_No": "99991111", "Vi_Tri_Treo": "Khác", "So_Tru": "B01", "Dia_Chi": "Xã Hưng Điền, Long An", "Lat": 10.850000, "Lng": 106.150000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 09:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+        {"Ma_Tram": "061150111", "Ten_Tram": "T011- Trạm Bơm Hưng Điền", "Ma_KH": "PB06110003334", "Ten_KH": "Trần Thị Bé", "So_No": "99991112", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "B02", "Dia_Chi": "Xã Hưng Điền, Long An", "Lat": 10.851000, "Lng": 106.151000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 09:30:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+        {"Ma_Tram": "061199999", "Ten_Tram": "T999- KDC Chợ Mới", "Ma_KH": "PB06110005555", "Ten_KH": "Công ty TNHH ABC", "So_No": "77775555", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "C10", "Dia_Chi": "Chợ Mới, Tỉnh Long An", "Lat": 10.550000, "Lng": 106.350000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 10:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+    ]
+    pd.DataFrame(mock_data).to_csv(DATA_FILE, index=False)
+
 if not os.path.exists(DATA_FILE):
-    cols = ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "So_No", "Vi_Tri_Treo", "So_Tru", "Dia_Chi", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]
-    pd.DataFrame(columns=cols).to_csv(DATA_FILE, index=False)
+    tao_du_lieu_mau() # Tự động gọi hàm tạo dữ liệu mẫu lần đầu tiên
 
 @st.cache_resource
 def load_ai_model():
@@ -96,7 +110,6 @@ def quet_ocr_ai(image_file):
     return None
 
 def lay_dia_chi_tu_toa_do(lat, lng):
-    # Trả về 2 chuỗi: (Địa chỉ chi tiết cho Công tơ, Địa chỉ chung chung cho Trạm)
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lng}&format=json"
         headers = {'User-Agent': 'EVN_SPC_App/1.0'}
@@ -104,19 +117,14 @@ def lay_dia_chi_tu_toa_do(lat, lng):
         if response.status_code == 200:
             data = response.json()
             diachi_chitiet = data.get('display_name', '')
-            
-            # Trích xuất Xã, Tỉnh cho Trạm
             address_parts = data.get('address', {})
             xa = address_parts.get('village', address_parts.get('suburb', address_parts.get('town', '')))
             tinh = address_parts.get('state', address_parts.get('city', ''))
-            
             diachi_tram_chung = ""
             if xa and tinh: diachi_tram_chung = f"{xa}, {tinh}"
             elif tinh: diachi_tram_chung = tinh
-            
             return diachi_chitiet, diachi_tram_chung
-    except:
-        pass
+    except: pass
     return "", ""
 
 with st.sidebar:
@@ -132,13 +140,11 @@ df = pd.read_csv(DATA_FILE)
 if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    # 1. TÌM KHÁCH HÀNG (Thay định kỳ / Hư hỏng)
-    st.info("💡 Hướng dẫn: Gõ Mã/Tên KH để cập nhật thông tin tự động. Địa chỉ sẽ được Vệ tinh lấy khi Lưu.")
+    st.info("💡 Bạn đang dùng bản Demo. Đã nạp sẵn 3 Trạm và 5 Khách hàng mẫu để test!")
     danh_sach_da_co = [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
     ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
     kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
     
-    # 2. XÂY DỰNG TỪ ĐIỂN TRẠM DUY NHẤT (Mã Trạm - Tên Trạm)
     df_tram_duy_nhat = df[['Ma_Tram', 'Ten_Tram']].dropna().drop_duplicates()
     list_tram_hien_co = [f"{row['Ma_Tram']} - {row['Ten_Tram']}" for _, row in df_tram_duy_nhat.iterrows() if str(row['Ma_Tram']).strip() != '']
     ds_tram = ["-- THÊM TRẠM BIẾN ÁP MỚI --"] + list_tram_hien_co
@@ -165,7 +171,6 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
 
     st.markdown("#### 📝 Thông tin chi tiết (Theo chuẩn NR-KH)")
     with st.expander("Nhấp để điền/sửa thông tin hành chính", expanded=True):
-        # Chọn Trạm (Gom chung thành 1 Block duy nhất)
         st.markdown("**⚡ THÔNG TIN TRẠM BIẾN ÁP**")
         chon_tram = st.selectbox("Quản lý Trạm (Chọn Mã/Tên trạm đã có hoặc tạo mới)", ds_tram, index=idx_tram)
         
@@ -229,16 +234,12 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # --- TỰ ĐỘNG DỊCH TỌA ĐỘ RA ĐỊA CHỈ THỰC TẾ ---
                     diachi_chitiet, diachi_tram_chung = lay_dia_chi_tu_toa_do(info['lat'], info['lng'])
-                    
                     if diachi_chitiet == "": diachi_chitiet = dia_chi
                     
-                    # Nếu là Trạm mới, tự động nối thêm địa chỉ Xã, Tỉnh vào Tên Trạm cho dễ quản lý
                     if chon_tram == "-- THÊM TRẠM BIẾN ÁP MỚI --" and diachi_tram_chung != "":
                         in_ten_tram = f"{in_ten_tram} ({diachi_tram_chung})"
                     
-                    # Dữ liệu chuẩn được xếp theo đúng thứ tự logic mới nhất
                     row_data = {
                         "Ma_Tram": in_ma_tram, "Ten_Tram": in_ten_tram, "Ma_KH": in_ma_kh, "Ten_KH": in_ten_kh,
                         "So_No": in_so_no, "Vi_Tri_Treo": in_vi_tri_treo, "So_Tru": in_so_tru, "Dia_Chi": diachi_chitiet, 
@@ -266,7 +267,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
         st.warning("Chưa có dữ liệu.")
     else:
         danh_sach_tim_kiem = ["-- Hiển thị tất cả --"] + df['Ma_KH'].tolist()
-        kh_can_tim = st.selectbox("🔍 Tìm khách hàng:", danh_sach_tim_kiem)
+        kh_can_tim = st.selectbox("🔍 Tìm khách hàng để zoom đến:", danh_sach_tim_kiem)
         
         if kh_can_tim != "-- Hiển thị tất cả --":
             kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
@@ -295,17 +296,12 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 <b>Vị trí treo:</b> {row.get('Vi_Tri_Treo', '')}<br>
                 <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
                 <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
-                
                 <hr style="margin: 10px 0;">
                 <b style="color:#e31837;">📸 Hình ảnh hiện trường:</b>
                 <div style="display:flex; justify-content:center; gap:8px; margin-top:5px; margin-bottom:10px;">
                     {html_tru}
                     {html_mat}
                 </div>
-                <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
-                   style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
-                   🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
-                </a>
             </div>
             """
             
@@ -316,7 +312,8 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=320), icon=custom_icon).add_to(cluster)
             
-        st_folium(m, width=1200, height=600, returned_objects=[])
+        # FIX LỖI TẮT BẢNG THÔNG TIN: THAY BẰNG folium_static
+        folium_static(m, width=1200, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
     st.markdown("## 📊 DỮ LIỆU ĐỒNG BỘ NR-KH")
