@@ -20,9 +20,11 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-DATA_FILE = "database_congto_v3.csv"
+# BẢN V4: CHUẨN HÓA DATABASE KHỚP 100% VỚI APP NR-KH CỦA TỔNG CÔNG TY
+DATA_FILE = "database_congto_v4.csv"
 if not os.path.exists(DATA_FILE):
-    pd.DataFrame(columns=["Ma_KH", "Ten_KH", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]).to_csv(DATA_FILE, index=False)
+    cols = ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "Dia_Chi", "So_No", "Danh_So", "Vi_Tri_Treo", "So_Tru", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]
+    pd.DataFrame(columns=cols).to_csv(DATA_FILE, index=False)
 
 @st.cache_resource
 def load_ai_model():
@@ -45,6 +47,7 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
+# --- HÀM XỬ LÝ ẢNH ---
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
@@ -96,7 +99,7 @@ def quet_ocr_ai(image_file):
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png", width=130)
     st.markdown("### 🛠️ Chế độ Hiện trường")
-    menu = st.radio("Điều hướng:", ["📸 Cập nhật Công tơ (2 Ảnh)", "🗺️ Bản đồ hệ thống", "📊 Cơ sở dữ liệu"])
+    menu = st.radio("Điều hướng:", ["📸 Cập nhật Công tơ (Đầy đủ)", "🗺️ Bản đồ NR-KH", "📊 Cơ sở dữ liệu"])
     if st.button("Đăng xuất"):
         st.session_state.authenticated = False
         st.rerun()
@@ -104,177 +107,174 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# GIAO DIỆN CHỤP ẢNH (CÓ HỎI XÁC NHẬN & CHỐNG TRÙNG)
+# GIAO DIỆN CHỤP ẢNH (NHẬP ĐỦ FORM THEO APP EVN)
 # ==========================================
-if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
-    st.markdown("## 📸 THU THẬP TỌA ĐỘ NGOẠI TUYẾN")
+if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
+    st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    # 1. Đọc dữ liệu hiện tại để tạo danh sách Khách hàng động (Dynamic)
-    df_current = pd.read_csv(DATA_FILE)
-    # Lấy danh sách đã có trong database đưa lên selectbox
-    danh_sach_da_co = [f"{row['Ma_KH']}|{row['Ten_KH']}" for _, row in df_current.iterrows()]
-    ds_kh = ["-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --"] + danh_sach_da_co
+    # Dropdown tìm khách hàng
+    danh_sach_da_co = [f"{row['Ma_KH']}|{row['Ten_KH']}" for _, row in df.iterrows()]
+    ds_kh = ["-- TẠO MỚI KHÁCH HÀNG / TRẠM --"] + danh_sach_da_co
+    kh_chon = st.selectbox("📌 Chọn KH đã có (Gõ để tìm) hoặc Tạo mới:", ds_kh)
     
-    kh_chon = st.selectbox("📌 Chọn Khách hàng có sẵn (Gõ để tìm kiếm):", ds_kh)
+    # Các biến chứa thông tin
+    ma_kh = ten_kh = ma_tram = ten_tram = dia_chi = so_no = danh_so = vi_tri_treo = so_tru = ""
     
-    ma_kh = ""
-    ten_kh = ""
+    # Nếu chọn KH cũ, tự động điền thông tin cũ vào Form để chỉ việc cập nhật
+    if kh_chon != "-- TẠO MỚI KHÁCH HÀNG / TRẠM --":
+        ma_kh_chon = kh_chon.split("|")[0]
+        row_data = df[df['Ma_KH'] == ma_kh_chon].iloc[-1]
+        
+        ma_kh = row_data.get('Ma_KH', '')
+        ten_kh = row_data.get('Ten_KH', '')
+        ma_tram = row_data.get('Ma_Tram', '')
+        ten_tram = row_data.get('Ten_Tram', '')
+        dia_chi = row_data.get('Dia_Chi', '')
+        so_no = row_data.get('So_No', '')
+        danh_so = row_data.get('Danh_So', '')
+        vi_tri_treo = row_data.get('Vi_Tri_Treo', '')
+        so_tru = row_data.get('So_Tru', '')
+
+    st.markdown("#### 📝 Thông tin chi tiết (Theo chuẩn NR-KH)")
+    with st.expander("Nhấp để điền/sửa thông tin hành chính", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            in_ma_kh = st.text_input("Mã KH (*Bắt buộc)", value=ma_kh)
+            in_ten_kh = st.text_input("Tên KH (*Bắt buộc)", value=ten_kh)
+            in_ma_tram = st.text_input("Mã Trạm", value=ma_tram)
+            in_ten_tram = st.text_input("Tên Trạm (VD: G070- UB Thuận Bình...)", value=ten_tram)
+            in_dia_chi = st.text_input("Địa chỉ", value=dia_chi)
+        with c2:
+            in_so_no = st.text_input("Số No (Số đồng hồ)", value=so_no)
+            in_danh_so = st.text_input("Danh số (Lộ trình)", value=danh_so)
+            in_vi_tri_treo = st.text_input("Vị trí treo", value=vi_tri_treo)
+            in_so_tru = st.text_input("Số Trụ (VD: T128)", value=so_tru)
+
+    in_ma_kh = str(in_ma_kh).strip().upper()
+    is_exist = in_ma_kh in df['Ma_KH'].values
     
-    if kh_chon == "-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --":
-        col_m, col_t = st.columns(2)
-        with col_m: 
-            ma_kh = st.text_input("Gõ Mã Khách Hàng (VD: PB06...)")
-        with col_t: 
-            ten_kh = st.text_input("Gõ Tên Khách Hàng (VD: Nguyễn Văn A)")
-    else:
-        if "|" in kh_chon:
-            ma_kh, ten_kh = kh_chon.split("|", 1) # Chỉ cắt 1 lần đề phòng tên KH có dấu |
-            
-    # XỬ LÝ CHỐNG TRÙNG LẶP: Loại bỏ khoảng trắng 2 đầu và bắt buộc in hoa toàn bộ
-    if ma_kh:
-        ma_kh = str(ma_kh).strip().upper()
-    if ten_kh:
-        ten_kh = str(ten_kh).strip()
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        upload_tru = st.file_uploader("🗼 1. Chụp toàn cảnh TRỤ ĐIỆN", type=['jpg', 'jpeg', 'png'])
+    st.markdown("#### 📸 Hình ảnh hiện trường")
+    c_img1, c_img2 = st.columns(2)
+    with c_img1:
+        upload_tru = st.file_uploader("🗼 1. Chụp TRỤ ĐIỆN", type=['jpg', 'jpeg', 'png'])
         if upload_tru: st.image(upload_tru, use_container_width=True)
-    with col2:
-        upload_mat = st.file_uploader("🔎 2. Chụp cận cảnh MẶT SỐ", type=['jpg', 'jpeg', 'png'])
+    with c_img2:
+        upload_mat = st.file_uploader("🔎 2. Chụp MẶT CÔNG TƠ", type=['jpg', 'jpeg', 'png'])
         if upload_mat: st.image(upload_mat, use_container_width=True)
         
-    # 2. KIỂM TRA TRÙNG LẶP VÀ HIỂN THỊ CẢNH BÁO XÁC NHẬN
-    is_exist = ma_kh in df_current['Ma_KH'].values
-    xac_nhan_ghi_de = True # Mặc định là True nếu là KH mới
-    
-    if is_exist and ma_kh != "":
-        st.warning(f"⚠️ **Mã khách hàng {ma_kh} ĐÃ TỒN TẠI trong hệ thống.**")
-        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận muốn GHI ĐÈ dữ liệu mới (ảnh, tọa độ) lên khách hàng này")
+    xac_nhan_ghi_de = True
+    if is_exist and in_ma_kh != "":
+        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu cũ.")
+        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận muốn GHI ĐÈ")
 
-    # 3. NÚT XỬ LÝ
-    if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
-        if not ma_kh or not ten_kh:
-            st.error("Vui lòng điền đủ Mã KH và Tên KH!")
+    if st.button("⚡ LƯU & ĐỒNG BỘ", type="primary", use_container_width=True):
+        if not in_ma_kh or not in_ten_kh:
+            st.error("Thiếu Mã KH hoặc Tên KH!")
         elif not upload_tru and not upload_mat:
-            st.error("Vui lòng chụp ít nhất 1 bức ảnh!")
+            st.error("Vui lòng chụp ít nhất 1 ảnh để lấy tọa độ!")
         elif is_exist and not xac_nhan_ghi_de:
-            st.error("❌ Bạn phải tick chọn 'Xác nhận muốn ghi đè' ở trên trước khi cập nhật!")
+            st.error("Vui lòng tick xác nhận ghi đè!")
         else:
-            with st.spinner("Đang bóc tách tọa độ và đồng bộ dữ liệu..."):
+            with st.spinner("Đang bóc tách tọa độ và xử lý..."):
                 anh_chinh = upload_mat if upload_mat else upload_tru
                 info = lay_gps_exif(anh_chinh)
-                if not info:
-                    info = quet_ocr_ai(anh_chinh)
+                if not info: info = quet_ocr_ai(anh_chinh)
                 
                 if info:
                     b64_tru = nen_anh_base64(upload_tru)
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # --- BẮT ĐẦU CƠ CHẾ LƯU ---
+                    row_data = {
+                        "Ma_Tram": in_ma_tram, "Ten_Tram": in_ten_tram, "Ma_KH": in_ma_kh, "Ten_KH": in_ten_kh,
+                        "Dia_Chi": in_dia_chi, "So_No": in_so_no, "Danh_So": in_danh_so, 
+                        "Vi_Tri_Treo": in_vi_tri_treo, "So_Tru": in_so_tru,
+                        "Lat": info['lat'], "Lng": info['lng'], "Nguon_Du_Lieu": info['src'], 
+                        "Thoi_Gian": thoi_gian, "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
+                    }
+                    
                     if is_exist:
-                        # GHI ĐÈ (Đã có xác nhận)
-                        idx = df_current[df_current['Ma_KH'] == ma_kh].index[0]
-                        df_current.at[idx, 'Lat'] = info['lat']
-                        df_current.at[idx, 'Lng'] = info['lng']
-                        df_current.at[idx, 'Nguon_Du_Lieu'] = info['src']
-                        df_current.at[idx, 'Thoi_Gian'] = thoi_gian
-                        df_current.at[idx, 'Anh_Tru_B64'] = b64_tru
-                        df_current.at[idx, 'Anh_Mat_B64'] = b64_mat
-                        df_current.at[idx, 'Ten_KH'] = ten_kh
+                        idx = df[df['Ma_KH'] == in_ma_kh].index[0]
+                        for key, val in row_data.items():
+                            df.at[idx, key] = val
                     else:
-                        # TẠO MỚI
-                        new_row = pd.DataFrame([{
-                            "Ma_KH": ma_kh, "Ten_KH": ten_kh, "Lat": info['lat'], "Lng": info['lng'], 
-                            "Nguon_Du_Lieu": info['src'], "Thoi_Gian": thoi_gian, 
-                            "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
-                        }])
-                        df_current = pd.concat([df_current, new_row], ignore_index=True)
+                        df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
+                    df.to_csv(DATA_FILE, index=False)
                     
-                    # Lưu lại toàn bộ vào file CSV
-                    df_current.to_csv(DATA_FILE, index=False)
-                    
-                    # --- ĐẨY LÊN GOOGLE SHEETS ---
-                    try:
-                        payload = {"Ma_KH": ma_kh, "Lat": info['lat'], "Lng": info['lng'], "Nguon": info['src'], "Thoi_Gian": thoi_gian}
-                        requests.post(GOOGLE_SHEET_URL, json=payload, timeout=5)
-                        sheet_status = "Đã đồng bộ Google Sheets ☁️"
-                    except:
-                        sheet_status = "Lưu offline (Mất mạng) 📴"
-                        
-                    st.success(f"✅ Đã cập nhật thành công 1 Công tơ! Trạng thái: {sheet_status}")
+                    st.success(f"✅ Thành công! Tọa độ quét từ: {info['src']}")
                     st.balloons()
                 else:
-                    st.error("❌ Không thể trích xuất tọa độ.")
+                    st.error("❌ Không thể lấy tọa độ từ ảnh này.")
+
 # ==========================================
-# BẢN ĐỒ: SỬA LỖI LỆCH TỌA ĐỘ
+# BẢN ĐỒ (REPLICA BẢNG THÔNG TIN CỦA EVN)
 # ==========================================
-elif menu == "🗺️ Bản đồ hệ thống":
-    st.markdown("## 🗺️ BẢN ĐỒ ĐỊNH VỊ CÔNG TƠ SPC")
+elif menu == "🗺️ Bản đồ NR-KH":
+    st.markdown("## 🗺️ SƠ ĐỒ ĐƠN TUYẾN - TÍCH HỢP AI")
     if df.empty:
-        st.warning("Chưa có dữ liệu trạm đo nào.")
+        st.warning("Chưa có dữ liệu.")
     else:
         danh_sach_tim_kiem = ["-- Hiển thị tất cả --"] + df['Ma_KH'].tolist()
-        kh_can_tim = st.selectbox("🔍 Tìm và định vị nhanh Khách hàng (Nhấn vào và gõ chữ):", danh_sach_tim_kiem)
+        kh_can_tim = st.selectbox("🔍 Tìm khách hàng:", danh_sach_tim_kiem)
         
         if kh_can_tim != "-- Hiển thị tất cả --":
             kh_data = df[df['Ma_KH'] == kh_can_tim].iloc[-1]
-            center_lat, center_lng = kh_data['Lat'], kh_data['Lng']
-            do_zoom = 20  # Zoom sát mặt đất tối đa
+            center_lat, center_lng, do_zoom = kh_data['Lat'], kh_data['Lng'], 20
         else:
-            center_lat, center_lng = df['Lat'].mean(), df['Lng'].mean()
-            do_zoom = 11
+            center_lat, center_lng, do_zoom = df['Lat'].mean(), df['Lng'].mean(), 11
             
         m = folium.Map(location=[center_lat, center_lng], zoom_start=do_zoom, tiles="cartodbpositron")
         cluster = MarkerCluster().add_to(m)
         
         for idx, row in df.iterrows():
-            html_tru = f'<img src="data:image/jpeg;base64,{row["Anh_Tru_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Tru_B64")) and row["Anh_Tru_B64"] else ""
-            html_mat = f'<img src="data:image/jpeg;base64,{row["Anh_Mat_B64"]}" style="width:110px; height:150px; object-fit:cover; border-radius:5px;">' if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"] else ""
+            html_tru = f'<img src="data:image/jpeg;base64,{row.get("Anh_Tru_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Tru_B64")) and row.get("Anh_Tru_B64") else ""
+            html_mat = f'<img src="data:image/jpeg;base64,{row.get("Anh_Mat_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64") else ""
             
+            # THIẾT KẾ POPUP CHUẨN 100% THEO APP EVN NR-KH
             popup_html = f"""
-            <div style="width:240px; text-align:center; font-family:Arial;">
-                <b style="color:#e31837; font-size: 15px;">{row['Ma_KH']}</b><br>
-                <i style="font-size:12px; color:gray;">{row['Ten_KH']}</i><br>
-                <div style="display:flex; justify-content:center; gap:5px; margin-top:8px; margin-bottom:10px;">
+            <div style="width:300px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
+                <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
+                    Xem sản lượng
+                </div>
+                <b>Mã Trạm:</b> {row.get('Ma_Tram', '')}<br>
+                <b>Tên Trạm:</b> {row.get('Ten_Tram', '')}<br>
+                <b>KH:</b> {row.get('Ten_KH', '')}<br>
+                <b>Mã KH:</b> {row.get('Ma_KH', '')}<br>
+                <b>ĐC:</b> {row.get('Dia_Chi', '')}<br>
+                <b>Số No:</b> {row.get('So_No', '')}<br>
+                <b>Danh số:</b> {row.get('Danh_So', '')}<br>
+                <b>Vị trí treo:</b> {row.get('Vi_Tri_Treo', '')}<br>
+                <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
+                <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
+                
+                <hr style="margin: 10px 0;">
+                <b style="color:#e31837;">📸 Hình ảnh hiện trường:</b>
+                <div style="display:flex; justify-content:center; gap:8px; margin-top:5px; margin-bottom:10px;">
                     {html_tru}
                     {html_mat}
                 </div>
+                
                 <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
-                   style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; font-weight:bold;">
-                   🧭 CHỈ ĐƯỜNG ĐẾN CÔNG TƠ NÀY
+                   style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
+                   🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
                 </a>
             </div>
             """
             
-            # 2. KHẮC PHỤC LỖI LỆCH TỌA ĐỘ
-            if pd.notna(row.get("Anh_Mat_B64")) and row["Anh_Mat_B64"]:
-                icon_url = f"data:image/jpeg;base64,{row['Anh_Mat_B64']}"
-                
-                # Thêm tham số icon_anchor=(22, 60) để cắm ĐÚNG CHÍNH GIỮA CẠNH DƯỚI BỨC ẢNH XUỐNG MẶT ĐẤT
-                custom_icon = folium.CustomIcon(
-                    icon_image=icon_url, 
-                    icon_size=(45, 60),
-                    icon_anchor=(22, 60) 
-                )
+            if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64"):
+                custom_icon = folium.CustomIcon(icon_image=f"data:image/jpeg;base64,{row['Anh_Mat_B64']}", icon_size=(40, 55), icon_anchor=(20, 55))
             else:
-                custom_icon = folium.Icon(color="red", icon="bolt", prefix="fa")
+                custom_icon = folium.Icon(color="blue", icon="info-sign")
                 
-            folium.Marker(
-                [row['Lat'], row['Lng']], 
-                popup=folium.Popup(popup_html, max_width=280), 
-                icon=custom_icon,
-                tooltip=row['Ma_KH']
-            ).add_to(cluster)
+            folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=320), icon=custom_icon).add_to(cluster)
             
         st_folium(m, width=1200, height=600, returned_objects=[])
 
 elif menu == "📊 Cơ sở dữ liệu":
-    st.markdown("## 📊 QUẢN LÝ DỮ LIỆU ĐIỂM ĐO")
+    st.markdown("## 📊 DỮ LIỆU ĐỒNG BỘ NR-KH")
     if not df.empty:
         df_show = df.drop(columns=["Anh_Tru_B64", "Anh_Mat_B64"], errors='ignore')
-        edited = st.data_editor(df_show, use_container_width=True, num_rows="dynamic")
-        st.download_button("📥 Xuất file Excel/CSV", edited.to_csv(index=False).encode('utf-8-sig'), "DuLieu_EVN_2Anh.csv", "text/csv")
+        st.dataframe(df_show, use_container_width=True)
+        st.download_button("📥 Xuất file Excel/CSV", df_show.to_csv(index=False).encode('utf-8-sig'), "DuLieu_EVN_NRKH.csv", "text/csv")
     else:
         st.info("Chưa có dữ liệu.")
