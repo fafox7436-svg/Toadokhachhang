@@ -20,7 +20,6 @@ GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
 
-# BẢN V4: CHUẨN HÓA DATABASE KHỚP 100% VỚI APP NR-KH CỦA TỔNG CÔNG TY
 DATA_FILE = "database_congto_v4.csv"
 if not os.path.exists(DATA_FILE):
     cols = ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "Dia_Chi", "So_No", "Danh_So", "Vi_Tri_Treo", "So_Tru", "Lat", "Lng", "Nguon_Du_Lieu", "Thoi_Gian", "Anh_Tru_B64", "Anh_Mat_B64"]
@@ -47,7 +46,6 @@ if not st.session_state.authenticated:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
 
-# --- HÀM XỬ LÝ ẢNH ---
 def nen_anh_base64(image_file):
     if not image_file: return ""
     image_file.seek(0)
@@ -107,33 +105,50 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# GIAO DIỆN CHỤP ẢNH (NHẬP ĐỦ FORM THEO APP EVN)
+# GIAO DIỆN NHẬP LIỆU THÔNG MINH (Tự động điền & Gợi ý)
 # ==========================================
 if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    # Dropdown tìm khách hàng
+    # 1. THANH TÌM KIẾM KHÁCH HÀNG (Cho nghiệp vụ Thay định kỳ / Hư hỏng)
+    st.info("💡 Hướng dẫn: \n- **Gắn mới:** Chọn '-- TẠO MỚI KHÁCH HÀNG --'.\n- **Thay định kỳ/Hư hỏng:** Gõ tên/mã KH vào ô dưới để tìm, toàn bộ thông tin sẽ được điền sẵn.")
     danh_sach_da_co = [f"{row['Ma_KH']}|{row['Ten_KH']}" for _, row in df.iterrows()]
-    ds_kh = ["-- TẠO MỚI KHÁCH HÀNG / TRẠM --"] + danh_sach_da_co
-    kh_chon = st.selectbox("📌 Chọn KH đã có (Gõ để tìm) hoặc Tạo mới:", ds_kh)
+    ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
+    kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
     
-    # Các biến chứa thông tin
-    ma_kh = ten_kh = ma_tram = ten_tram = dia_chi = so_no = danh_so = vi_tri_treo = so_tru = ""
+    # Chuẩn bị danh sách Trạm gợi ý (Lọc bỏ các giá trị rỗng/NaN)
+    list_ma_tram = ["-- THÊM MÃ TRẠM MỚI --"] + [str(x) for x in df['Ma_Tram'].dropna().unique() if str(x).strip() != '']
+    list_ten_tram = ["-- THÊM TÊN TRẠM MỚI --"] + [str(x) for x in df['Ten_Tram'].dropna().unique() if str(x).strip() != '']
     
-    # Nếu chọn KH cũ, tự động điền thông tin cũ vào Form để chỉ việc cập nhật
-    if kh_chon != "-- TẠO MỚI KHÁCH HÀNG / TRẠM --":
+    # Các biến chứa thông tin khởi tạo rỗng
+    ma_kh = ten_kh = dia_chi = so_no = danh_so = so_tru = ""
+    # Biến vị trí treo mặc định
+    idx_vitri = 0
+    # Biến trạm mặc định
+    idx_ma_tram = 0
+    idx_ten_tram = 0
+    
+    # NẾU CHỌN KH CŨ -> TỰ ĐỘNG LẤY DATA CŨ ĐỂ ĐIỀN VÀO FORM
+    if kh_chon != "-- TẠO MỚI KHÁCH HÀNG --":
         ma_kh_chon = kh_chon.split("|")[0]
         row_data = df[df['Ma_KH'] == ma_kh_chon].iloc[-1]
         
-        ma_kh = row_data.get('Ma_KH', '')
-        ten_kh = row_data.get('Ten_KH', '')
-        ma_tram = row_data.get('Ma_Tram', '')
-        ten_tram = row_data.get('Ten_Tram', '')
-        dia_chi = row_data.get('Dia_Chi', '')
-        so_no = row_data.get('So_No', '')
-        danh_so = row_data.get('Danh_So', '')
-        vi_tri_treo = row_data.get('Vi_Tri_Treo', '')
-        so_tru = row_data.get('So_Tru', '')
+        ma_kh = str(row_data.get('Ma_KH', ''))
+        ten_kh = str(row_data.get('Ten_KH', ''))
+        dia_chi = str(row_data.get('Dia_Chi', ''))
+        so_no = str(row_data.get('So_No', ''))
+        danh_so = str(row_data.get('Danh_So', ''))
+        so_tru = str(row_data.get('So_Tru', ''))
+        
+        # Thiết lập lại Menu Vị trí treo
+        if str(row_data.get('Vi_Tri_Treo', '')) == "Khác": idx_vitri = 1
+            
+        # Thiết lập lại Menu Trạm
+        old_ma_tram = str(row_data.get('Ma_Tram', ''))
+        if old_ma_tram in list_ma_tram: idx_ma_tram = list_ma_tram.index(old_ma_tram)
+        
+        old_ten_tram = str(row_data.get('Ten_Tram', ''))
+        if old_ten_tram in list_ten_tram: idx_ten_tram = list_ten_tram.index(old_ten_tram)
 
     st.markdown("#### 📝 Thông tin chi tiết (Theo chuẩn NR-KH)")
     with st.expander("Nhấp để điền/sửa thông tin hành chính", expanded=True):
@@ -141,13 +156,29 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         with c1:
             in_ma_kh = st.text_input("Mã KH (*Bắt buộc)", value=ma_kh)
             in_ten_kh = st.text_input("Tên KH (*Bắt buộc)", value=ten_kh)
-            in_ma_tram = st.text_input("Mã Trạm", value=ma_tram)
-            in_ten_tram = st.text_input("Tên Trạm (VD: G070- UB Thuận Bình...)", value=ten_tram)
+            
+            # Form Gợi ý Mã Trạm
+            chon_ma_tram = st.selectbox("Mã Trạm (Chọn hoặc Tạo mới)", list_ma_tram, index=idx_ma_tram)
+            if chon_ma_tram == "-- THÊM MÃ TRẠM MỚI --":
+                in_ma_tram = st.text_input("✍️ Gõ Mã Trạm Mới:")
+            else:
+                in_ma_tram = chon_ma_tram
+                
             in_dia_chi = st.text_input("Địa chỉ", value=dia_chi)
+            
         with c2:
             in_so_no = st.text_input("Số No (Số đồng hồ)", value=so_no)
             in_danh_so = st.text_input("Danh số (Lộ trình)", value=danh_so)
-            in_vi_tri_treo = st.text_input("Vị trí treo", value=vi_tri_treo)
+            
+            # Form Gợi ý Tên Trạm
+            chon_ten_tram = st.selectbox("Tên Trạm (Chọn hoặc Tạo mới)", list_ten_tram, index=idx_ten_tram)
+            if chon_ten_tram == "-- THÊM TÊN TRẠM MỚI --":
+                in_ten_tram = st.text_input("✍️ Gõ Tên Trạm Mới (VD: G070- UB Thuận Bình):")
+            else:
+                in_ten_tram = chon_ten_tram
+                
+            # Form Menu Vị trí treo (Chỉ cho phép 2 lựa chọn)
+            in_vi_tri_treo = st.selectbox("Vị trí treo", ["Tại trụ", "Khác"], index=idx_vitri)
             in_so_tru = st.text_input("Số Trụ (VD: T128)", value=so_tru)
 
     in_ma_kh = str(in_ma_kh).strip().upper()
@@ -164,8 +195,8 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         
     xac_nhan_ghi_de = True
     if is_exist and in_ma_kh != "":
-        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu cũ.")
-        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận muốn GHI ĐÈ")
+        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu (Phù hợp cho Thay định kỳ/Hư hỏng).")
+        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận CẬP NHẬT thông tin mới")
 
     if st.button("⚡ LƯU & ĐỒNG BỘ", type="primary", use_container_width=True):
         if not in_ma_kh or not in_ten_kh:
@@ -173,7 +204,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         elif not upload_tru and not upload_mat:
             st.error("Vui lòng chụp ít nhất 1 ảnh để lấy tọa độ!")
         elif is_exist and not xac_nhan_ghi_de:
-            st.error("Vui lòng tick xác nhận ghi đè!")
+            st.error("Vui lòng tick xác nhận ghi đè/cập nhật!")
         else:
             with st.spinner("Đang bóc tách tọa độ và xử lý..."):
                 anh_chinh = upload_mat if upload_mat else upload_tru
@@ -207,7 +238,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     st.error("❌ Không thể lấy tọa độ từ ảnh này.")
 
 # ==========================================
-# BẢN ĐỒ (REPLICA BẢNG THÔNG TIN CỦA EVN)
+# BẢN ĐỒ (GIỮ NGUYÊN GIAO DIỆN XỊN SÒ)
 # ==========================================
 elif menu == "🗺️ Bản đồ NR-KH":
     st.markdown("## 🗺️ SƠ ĐỒ ĐƠN TUYẾN - TÍCH HỢP AI")
@@ -230,7 +261,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
             html_tru = f'<img src="data:image/jpeg;base64,{row.get("Anh_Tru_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Tru_B64")) and row.get("Anh_Tru_B64") else ""
             html_mat = f'<img src="data:image/jpeg;base64,{row.get("Anh_Mat_B64","")}" style="width:130px; height:180px; object-fit:cover; border: 1px solid #ccc;">' if pd.notna(row.get("Anh_Mat_B64")) and row.get("Anh_Mat_B64") else ""
             
-            # THIẾT KẾ POPUP CHUẨN 100% THEO APP EVN NR-KH
             popup_html = f"""
             <div style="width:300px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
                 <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
@@ -253,7 +283,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
                     {html_tru}
                     {html_mat}
                 </div>
-                
                 <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
                    style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
                    🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
