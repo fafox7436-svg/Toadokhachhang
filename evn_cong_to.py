@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-import streamlit.components.v1 as components  # KỸ THUẬT NHÚNG HTML SÂU (CHỐNG CHỚP TẮT)
+import streamlit.components.v1 as components  
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -22,17 +22,13 @@ st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon=
 
 DATA_FILE = "database_congto_v8.csv"
 
-# --- HÀM TẠO DỮ LIỆU GIẢ LẬP ĐỂ TEST ---
 def tao_du_lieu_mau():
     url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png"
     sample_b64 = base64.b64encode(requests.get(url).content).decode()
-    
     mock_data = [
         {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002271", "Ten_KH": "Bùi Văn Hội", "So_No": "21347524", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T128", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.737803, "Lng": 106.235706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
         {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002272", "Ten_KH": "Lê Thị Xuân", "So_No": "21347525", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T129", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.738803, "Lng": 106.236706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:15:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
-        {"Ma_Tram": "061150111", "Ten_Tram": "T011- Trạm Bơm Hưng Điền", "Ma_KH": "PB06110003333", "Ten_KH": "Nguyễn Văn Đang", "So_No": "99991111", "Vi_Tri_Treo": "Khác", "So_Tru": "B01", "Dia_Chi": "Xã Hưng Điền, Long An", "Lat": 10.850000, "Lng": 106.150000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 09:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
-        {"Ma_Tram": "061150111", "Ten_Tram": "T011- Trạm Bơm Hưng Điền", "Ma_KH": "PB06110003334", "Ten_KH": "Trần Thị Bé", "So_No": "99991112", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "B02", "Dia_Chi": "Xã Hưng Điền, Long An", "Lat": 10.851000, "Lng": 106.151000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 09:30:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
-        {"Ma_Tram": "061199999", "Ten_Tram": "T999- KDC Chợ Mới", "Ma_KH": "PB06110005555", "Ten_KH": "Công ty TNHH ABC", "So_No": "77775555", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "C10", "Dia_Chi": "Chợ Mới, Tỉnh Long An", "Lat": 10.550000, "Lng": 106.350000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 10:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
+        {"Ma_Tram": "061150111", "Ten_Tram": "T011- Trạm Bơm Hưng Điền", "Ma_KH": "PB06110003333", "Ten_KH": "Nguyễn Văn Đang", "So_No": "99991111", "Vi_Tri_Treo": "Khác", "So_Tru": "B01", "Dia_Chi": "Xã Hưng Điền, Long An", "Lat": 10.850000, "Lng": 106.150000, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 09:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64}
     ]
     pd.DataFrame(mock_data).to_csv(DATA_FILE, index=False)
 
@@ -44,21 +40,34 @@ def load_ai_model():
     return easyocr.Reader(['en'], gpu=False)
 reader = load_ai_model()
 
+# ==========================================
+# CƠ CHẾ ĐĂNG NHẬP (CÓ DUY TRÌ PHIÊN)
+# ==========================================
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+
+# Kiểm tra xem trên link URL có chứa thẻ bài "duy trì đăng nhập" không
+if st.query_params.get("auth_token") == "evnspc_admin_2026_valid":
+    st.session_state.authenticated = True
 
 if not st.session_state.authenticated:
     st.markdown("<h1 style='color: #e31837; text-align: center;'>⚡ ĐĂNG NHẬP HỆ THỐNG EVN SPC</h1>", unsafe_allow_html=True)
     with st.form("login"):
         u = st.text_input("Tài khoản")
         p = st.text_input("Mật khẩu", type="password")
+        # Thêm nút Ghi nhớ
+        ghi_nho = st.checkbox("🔄 Ghi nhớ đăng nhập trên thiết bị này")
         if st.form_submit_button("Đăng nhập"):
             if u == "admin" and p == "evnspc2026":
                 st.session_state.authenticated = True
+                if ghi_nho:
+                    # Gắn Token duy trì vào thanh URL
+                    st.query_params["auth_token"] = "evnspc_admin_2026_valid"
                 st.rerun()
             else:
                 st.error("Sai thông tin đăng nhập!")
     st.stop()
+# ==========================================
 
 def nen_anh_base64(image_file):
     if not image_file: return ""
@@ -131,7 +140,9 @@ with st.sidebar:
     st.markdown("### 🛠️ Chế độ Hiện trường")
     menu = st.radio("Điều hướng:", ["📸 Cập nhật Công tơ (Đầy đủ)", "🗺️ Bản đồ NR-KH", "📊 Cơ sở dữ liệu"])
     if st.button("Đăng xuất"):
+        # Bấm đăng xuất sẽ thu hồi phiên và xóa URL Token
         st.session_state.authenticated = False
+        st.query_params.clear()
         st.rerun()
 
 df = pd.read_csv(DATA_FILE)
@@ -139,7 +150,7 @@ df = pd.read_csv(DATA_FILE)
 if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
     
-    st.info("💡 Gõ Mã/Tên KH để lấy dữ liệu có sẵn. Lưu ý: Bản Demo đã nạp sẵn 5 Khách hàng mẫu!")
+    st.info("💡 Gõ Mã/Tên KH để lấy dữ liệu có sẵn. Lưu ý: Bản Demo đã nạp sẵn các Khách hàng mẫu!")
     danh_sach_da_co = [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
     ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
     kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
@@ -265,7 +276,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
-        # ĐÃ KHÔI PHỤC LẠI THANH TÌM KIẾM ĐẦY ĐỦ TÊN + MÃ KHÁCH HÀNG 
         danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
         kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem)
         
@@ -283,7 +293,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
             b64_tru = row.get("Anh_Tru_B64", "")
             b64_mat = row.get("Anh_Mat_B64", "")
             
-            # FIX LỖI TẮT BẢNG KHI XEM ẢNH: SỬ DỤNG THẺ LINK MẶC ĐỊNH CỦA TRÌNH DUYỆT (THẺ <a>)
             html_tru = ""
             if pd.notna(b64_tru) and b64_tru:
                 img_src = f"data:image/jpeg;base64,{b64_tru}"
@@ -328,7 +337,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
-        # FIX LỖI BẢN ĐỒ CHỚP TẮT KHI BẤM: NHÚNG HTML SÂU BẰNG IFRAME
         map_html = m.get_root().render()
         components.html(map_html, height=600)
 
