@@ -104,17 +104,21 @@ with st.sidebar:
 df = pd.read_csv(DATA_FILE)
 
 # ==========================================
-# GIAO DIỆN CHỤP ẢNH (ĐÃ THÊM NHẬP TAY KH)
+# GIAO DIỆN CHỤP ẢNH (CÓ HỎI XÁC NHẬN & CHỐNG TRÙNG)
 # ==========================================
 if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
     st.markdown("## 📸 THU THẬP TỌA ĐỘ NGOẠI TUYẾN")
     
-# 1. Khởi tạo giá trị mặc định để chống lỗi NameError tuyệt đối
+    # 1. Đọc dữ liệu hiện tại để tạo danh sách Khách hàng động (Dynamic)
+    df_current = pd.read_csv(DATA_FILE)
+    # Lấy danh sách đã có trong database đưa lên selectbox
+    danh_sach_da_co = [f"{row['Ma_KH']}|{row['Ten_KH']}" for _, row in df_current.iterrows()]
+    ds_kh = ["-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --"] + danh_sach_da_co
+    
+    kh_chon = st.selectbox("📌 Chọn Khách hàng có sẵn (Gõ để tìm kiếm):", ds_kh)
+    
     ma_kh = ""
     ten_kh = ""
-
-    ds_kh = ["-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --", "PB06110009864|Nguyễn Thị Xanh", "PB06110009865|Trần Văn A"]
-    kh_chon = st.selectbox("📌 Chọn Khách hàng có sẵn (Gõ để tìm kiếm):", ds_kh)
     
     if kh_chon == "-- GÕ TÊN KHÁCH HÀNG MỚI VÀO ĐÂY --":
         col_m, col_t = st.columns(2)
@@ -124,7 +128,13 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
             ten_kh = st.text_input("Gõ Tên Khách Hàng (VD: Nguyễn Văn A)")
     else:
         if "|" in kh_chon:
-            ma_kh, ten_kh = kh_chon.split("|")
+            ma_kh, ten_kh = kh_chon.split("|", 1) # Chỉ cắt 1 lần đề phòng tên KH có dấu |
+            
+    # XỬ LÝ CHỐNG TRÙNG LẶP: Loại bỏ khoảng trắng 2 đầu và bắt buộc in hoa toàn bộ
+    if ma_kh:
+        ma_kh = str(ma_kh).strip().upper()
+    if ten_kh:
+        ten_kh = str(ten_kh).strip()
     
     col1, col2 = st.columns(2)
     with col1:
@@ -134,11 +144,22 @@ if menu == "📸 Cập nhật Công tơ (2 Ảnh)":
         upload_mat = st.file_uploader("🔎 2. Chụp cận cảnh MẶT SỐ", type=['jpg', 'jpeg', 'png'])
         if upload_mat: st.image(upload_mat, use_container_width=True)
         
-if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
+    # 2. KIỂM TRA TRÙNG LẶP VÀ HIỂN THỊ CẢNH BÁO XÁC NHẬN
+    is_exist = ma_kh in df_current['Ma_KH'].values
+    xac_nhan_ghi_de = True # Mặc định là True nếu là KH mới
+    
+    if is_exist and ma_kh != "":
+        st.warning(f"⚠️ **Mã khách hàng {ma_kh} ĐÃ TỒN TẠI trong hệ thống.**")
+        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận muốn GHI ĐÈ dữ liệu mới (ảnh, tọa độ) lên khách hàng này")
+
+    # 3. NÚT XỬ LÝ
+    if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_container_width=True):
         if not ma_kh or not ten_kh:
             st.error("Vui lòng điền đủ Mã KH và Tên KH!")
         elif not upload_tru and not upload_mat:
             st.error("Vui lòng chụp ít nhất 1 bức ảnh!")
+        elif is_exist and not xac_nhan_ghi_de:
+            st.error("❌ Bạn phải tick chọn 'Xác nhận muốn ghi đè' ở trên trước khi cập nhật!")
         else:
             with st.spinner("Đang bóc tách tọa độ và đồng bộ dữ liệu..."):
                 anh_chinh = upload_mat if upload_mat else upload_tru
@@ -151,12 +172,9 @@ if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_contai
                     b64_mat = nen_anh_base64(upload_mat)
                     thoi_gian = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # --- BẮT ĐẦU CƠ CHẾ LƯU THÔNG MINH (CHỐNG TRÙNG LẶP) ---
-                    df_current = pd.read_csv(DATA_FILE)
-                    
-                    # Kiểm tra xem Mã KH đã tồn tại trong file chưa?
-                    if ma_kh in df_current['Ma_KH'].values:
-                        # Nếu ĐÃ TỒN TẠI -> Tìm đúng dòng đó và Cập nhật (Ghi đè)
+                    # --- BẮT ĐẦU CƠ CHẾ LƯU ---
+                    if is_exist:
+                        # GHI ĐÈ (Đã có xác nhận)
                         idx = df_current[df_current['Ma_KH'] == ma_kh].index[0]
                         df_current.at[idx, 'Lat'] = info['lat']
                         df_current.at[idx, 'Lng'] = info['lng']
@@ -166,7 +184,7 @@ if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_contai
                         df_current.at[idx, 'Anh_Mat_B64'] = b64_mat
                         df_current.at[idx, 'Ten_KH'] = ten_kh
                     else:
-                        # Nếu CHƯA TỒN TẠI -> Tạo dòng mới
+                        # TẠO MỚI
                         new_row = pd.DataFrame([{
                             "Ma_KH": ma_kh, "Ten_KH": ten_kh, "Lat": info['lat'], "Lng": info['lng'], 
                             "Nguon_Du_Lieu": info['src'], "Thoi_Gian": thoi_gian, 
@@ -176,9 +194,8 @@ if st.button("⚡ XỬ LÝ & LƯU VÀO HỆ THỐNG", type="primary", use_contai
                     
                     # Lưu lại toàn bộ vào file CSV
                     df_current.to_csv(DATA_FILE, index=False)
-                    # --- KẾT THÚC CƠ CHẾ LƯU THÔNG MINH ---
                     
-                    # [LUỒNG 2] ĐẨY LÊN GOOGLE SHEETS
+                    # --- ĐẨY LÊN GOOGLE SHEETS ---
                     try:
                         payload = {"Ma_KH": ma_kh, "Lat": info['lat'], "Lng": info['lng'], "Nguon": info['src'], "Thoi_Gian": thoi_gian}
                         requests.post(GOOGLE_SHEET_URL, json=payload, timeout=5)
