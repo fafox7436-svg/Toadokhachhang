@@ -12,19 +12,23 @@ import base64
 import io
 import os
 from datetime import datetime
+from pathlib import Path
+from html import escape
+from ui import setup, brand, hero, section, summary, steps, empty_photo, icon
 import requests
 
 # =====================================================================
 GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 # =====================================================================
 
-st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="EVNSPC | Quản lý điểm đo", page_icon=Image.new("RGB", (32, 32), "#07529b"), layout="wide")
+setup()
 
-DATA_FILE = "database_congto_v8.csv"
+DATA_FILE = str(Path(__file__).parent / "database_congto_v8.csv")
 
 def tao_du_lieu_mau():
-    url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png"
-    sample_b64 = base64.b64encode(requests.get(url).content).decode()
+    # Ảnh minh họa trống; không sử dụng logo thay cho ảnh hiện trường.
+    sample_b64 = ""
     mock_data = [
         {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002271", "Ten_KH": "Bùi Văn Hội", "So_No": "21347524", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T128", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.737803, "Lng": 106.235706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:00:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
         {"Ma_Tram": "061130700", "Ten_Tram": "G070- UB Thuận Bình", "Ma_KH": "PB06110002272", "Ten_KH": "Lê Thị Xuân", "So_No": "21347525", "Vi_Tri_Treo": "Tại trụ", "So_Tru": "T129", "Dia_Chi": "Ấp Đồn A, Xã Bình Thành, Tỉnh Tây Ninh", "Lat": 10.738803, "Lng": 106.236706, "Nguon_Du_Lieu": "Dữ liệu mẫu", "Thoi_Gian": "2026-09-20 08:15:00", "Anh_Tru_B64": sample_b64, "Anh_Mat_B64": sample_b64},
@@ -38,7 +42,7 @@ if not os.path.exists(DATA_FILE):
 @st.cache_resource
 def load_ai_model():
     return easyocr.Reader(['en'], gpu=False)
-reader = load_ai_model()
+
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -47,11 +51,11 @@ if st.query_params.get("auth_token") == "evnspc_admin_2026_valid":
     st.session_state.authenticated = True
 
 if not st.session_state.authenticated:
-    st.markdown("<h1 style='color: #e31837; text-align: center;'>⚡ ĐĂNG NHẬP HỆ THỐNG EVN SPC</h1>", unsafe_allow_html=True)
+    hero("Đăng nhập hệ thống", "Quản lý thông tin công tơ và vị trí điểm đo tập trung.", "shield")
     with st.form("login"):
         u = st.text_input("Tài khoản")
         p = st.text_input("Mật khẩu", type="password")
-        ghi_nho = st.checkbox("🔄 Ghi nhớ đăng nhập trên thiết bị này")
+        ghi_nho = st.checkbox(" Ghi nhớ đăng nhập trên thiết bị này")
         if st.form_submit_button("Đăng nhập"):
             if u == "admin" and p == "evnspc2026":
                 st.session_state.authenticated = True
@@ -98,7 +102,7 @@ def quet_ocr_ai(image_file):
         img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=10)
-        text = " ".join(reader.readtext(gray, detail=0, paragraph=False)).replace(" ", "")
+        text = " ".join(load_ai_model().readtext(gray, detail=0, paragraph=False)).replace(" ", "")
         pattern = r"(1[0-9]|2[0-3])[^\dNnEe]{0,3}[oO0]?[^\dNnEe]{0,3}([0-5]?\d)[^\dNnEe]{0,3}([\d,\.]+)[^\dNnEe]{0,3}[Nn][^\dNnEe]{0,3}(10[2-9])[^\dNnEe]{0,3}[oO0]?[^\dNnEe]{0,3}([0-5]?\d)[^\dNnEe]{0,3}([\d,\.]+)[^\dNnEe]{0,3}[EeWw]"
         match = re.search(pattern, text)
         if match:
@@ -128,23 +132,32 @@ def lay_dia_chi_tu_toa_do(lat, lng):
     return "", ""
 
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Logo_EVN.svg/1024px-Logo_EVN.svg.png", width=130)
-    st.markdown("### 🛠️ Chế độ Hiện trường")
-    menu = st.radio("Điều hướng:", ["📸 Cập nhật Công tơ (Đầy đủ)", "🗺️ Bản đồ NR-KH", "📊 Cơ sở dữ liệu"])
+    brand()
+    st.caption("Không gian làm việc hiện trường")
+    menu = st.radio("Chức năng", ["Cập nhật công tơ", "Bản đồ NR-KH", "Cơ sở dữ liệu"])
+    st.divider()
+    st.caption("Lưu trữ: CSV cục bộ")
     if st.button("Đăng xuất"):
         st.session_state.authenticated = False
         st.query_params.clear()
         st.rerun()
 
-df = pd.read_csv(DATA_FILE)
+df = pd.read_csv(DATA_FILE, dtype=str, keep_default_na=False)
+for coordinate in ["Lat", "Lng"]:
+    df[coordinate] = pd.to_numeric(df[coordinate], errors="coerce")
 
-if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
-    st.markdown("## 📸 THU THẬP TỌA ĐỘ & THÔNG TIN ĐIỂM ĐO")
+
+if menu == "Cập nhật công tơ":
+    hero("Cập nhật thông tin điểm đo", "Thu thập thông tin công tơ, hình ảnh và tọa độ hiện trường.")
+    summary(df)
+    steps()
     
-    st.info("💡 Gõ Mã/Tên KH để lấy dữ liệu có sẵn. Lưu ý: Bản Demo đã nạp sẵn các Khách hàng mẫu!")
+    st.info("Tìm theo mã hoặc tên khách hàng để cập nhật hồ sơ đã có.")
+    if df["Nguon_Du_Lieu"].eq("Dữ liệu mẫu").any():
+        st.caption("Dữ liệu minh họa có trong danh sách; cần thay bằng dữ liệu thực tế trước khi vận hành.")
     danh_sach_da_co = [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
     ds_kh = ["-- TẠO MỚI KHÁCH HÀNG --"] + danh_sach_da_co
-    kh_chon = st.selectbox("📌 Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
+    kh_chon = st.selectbox(" Tìm Khách hàng đã có hoặc Tạo mới:", ds_kh)
     
     df_tram_duy_nhat = df[['Ma_Tram', 'Ten_Tram']].dropna().drop_duplicates()
     list_tram_hien_co = [f"{row['Ma_Tram']} - {row['Ten_Tram']}" for _, row in df_tram_duy_nhat.iterrows() if str(row['Ma_Tram']).strip() != '']
@@ -170,9 +183,9 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         chuoi_tram = f"{old_ma_tram} - {old_ten_tram}"
         if chuoi_tram in ds_tram: idx_tram = ds_tram.index(chuoi_tram)
 
-    st.markdown("#### 📝 Thông tin chi tiết (Theo chuẩn NR-KH)")
+    section("01", "Thông tin điểm đo", "meter")
     with st.expander("Nhấp để điền/sửa thông tin hành chính", expanded=True):
-        st.markdown("**⚡ THÔNG TIN TRẠM BIẾN ÁP**")
+        st.markdown("**Thông tin trạm biến áp**")
         chon_tram = st.selectbox("Quản lý Trạm (Chọn Mã/Tên trạm đã có hoặc tạo mới)", ds_tram, index=idx_tram)
         
         in_ma_tram = ""
@@ -180,14 +193,14 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         
         if chon_tram == "-- THÊM TRẠM BIẾN ÁP MỚI --":
             col_m_tram, col_t_tram = st.columns(2)
-            with col_m_tram: in_ma_tram = st.text_input("✍️ Nhập MÃ TRẠM MỚI (VD: 061130700)")
-            with col_t_tram: in_ten_tram = st.text_input("✍️ Nhập TÊN TRẠM MỚI (Xã/Tỉnh sẽ tự thêm khi lưu)")
+            with col_m_tram: in_ma_tram = st.text_input("Mã trạm mới (ví dụ: 061130700)")
+            with col_t_tram: in_ten_tram = st.text_input("Tên trạm mới (tự bổ sung xã/tỉnh khi lưu)")
         else:
             in_ma_tram = chon_tram.split(" - ")[0]
             in_ten_tram = chon_tram.split(" - ", 1)[1]
 
         st.markdown("---")
-        st.markdown("**👤 THÔNG TIN KHÁCH HÀNG / CÔNG TƠ**")
+        st.markdown("**Thông tin khách hàng / công tơ**")
         c1, c2 = st.columns(2)
         with c1:
             in_ma_kh = st.text_input("Mã KH (*Bắt buộc)", value=ma_kh)
@@ -196,26 +209,29 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         with c2:
             in_vi_tri_treo = st.selectbox("Vị trí treo", ["Tại trụ", "Khác"], index=idx_vitri)
             in_so_tru = st.text_input("Số Trụ (VD: T128)", value=so_tru)
-            in_dia_chi = st.text_input("Địa chỉ Công tơ (AI Tự động dò tìm)", value=dia_chi, disabled=True)
+            in_dia_chi = st.text_input("Địa chỉ công tơ (tra cứu theo tọa độ)", value=dia_chi, disabled=True)
 
     in_ma_kh = str(in_ma_kh).strip().upper()
     is_exist = in_ma_kh in df['Ma_KH'].values
     
-    st.markdown("#### 📸 Hình ảnh hiện trường")
+    section("02", "Hình ảnh hiện trường", "camera")
     c_img1, c_img2 = st.columns(2)
     with c_img1:
-        upload_tru = st.file_uploader("🗼 1. Chụp TRỤ ĐIỆN", type=['jpg', 'jpeg', 'png'])
+        upload_tru = st.file_uploader("Ảnh trụ điện", type=['jpg', 'jpeg', 'png'])
         if upload_tru: st.image(upload_tru, use_container_width=True)
+        else: empty_photo("tower", "Ảnh trụ điện", "Chọn ảnh tổng thể, nhìn rõ số trụ và vị trí lắp đặt.")
     with c_img2:
-        upload_mat = st.file_uploader("🔎 2. Chụp MẶT CÔNG TƠ", type=['jpg', 'jpeg', 'png'])
+        upload_mat = st.file_uploader("Ảnh mặt công tơ", type=['jpg', 'jpeg', 'png'])
         if upload_mat: st.image(upload_mat, use_container_width=True)
+        else: empty_photo("meter", "Ảnh mặt công tơ", "Chọn ảnh rõ số công tơ; ưu tiên ảnh gốc có GPS.")
         
+    section("03", "Kiểm tra và lưu hồ sơ", "shield")
     xac_nhan_ghi_de = True
     if is_exist and in_ma_kh != "":
-        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu (Phù hợp cho Thay định kỳ/Hư hỏng).")
-        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận CẬP NHẬT thông tin & tọa độ mới")
+        st.warning(f" Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu (Phù hợp cho Thay định kỳ/Hư hỏng).")
+        xac_nhan_ghi_de = st.checkbox(" Tôi xác nhận CẬP NHẬT thông tin & tọa độ mới")
 
-    if st.button("⚡ LƯU & ĐỒNG BỘ", type="primary", use_container_width=True):
+    if st.button("Lưu thông tin điểm đo", type="primary", use_container_width=True):
         if not in_ma_kh or not in_ten_kh:
             st.error("Thiếu Mã KH hoặc Tên KH!")
         elif not in_ma_tram or not in_ten_tram:
@@ -225,7 +241,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         elif is_exist and not xac_nhan_ghi_de:
             st.error("Vui lòng tick xác nhận ghi đè/cập nhật!")
         else:
-            with st.spinner("Đang phân tích tọa độ và dò tìm Địa chỉ vệ tinh..."):
+            with st.spinner("Đang đọc tọa độ ảnh và tra cứu địa chỉ..."):
                 anh_chinh = upload_mat if upload_mat else upload_tru
                 info = lay_gps_exif(anh_chinh)
                 if not info: info = quet_ocr_ai(anh_chinh)
@@ -255,19 +271,25 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                     df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
                     
-                    st.success(f"✅ Thành công! Đã cập nhật tọa độ & địa chỉ mới: **{diachi_chitiet}**")
-                    st.balloons()
+                    st.success(f" Thành công! Đã cập nhật tọa độ & địa chỉ mới: **{diachi_chitiet}**")
+                    st.caption("Đã lưu vào cơ sở dữ liệu CSV cục bộ.")
                 else:
-                    st.error("❌ Hình ảnh của bạn không có thông tin GPS. Hãy bật định vị khi chụp!")
+                    st.error(" Hình ảnh của bạn không có thông tin GPS. Hãy bật định vị khi chụp!")
 
-elif menu == "🗺️ Bản đồ NR-KH":
-    st.markdown("## 🗺️ SƠ ĐỒ ĐƠN TUYẾN - TÍCH HỢP AI")
+elif menu == "Bản đồ NR-KH":
+    hero("Bản đồ điểm đo NR-KH", "Tra cứu khách hàng, xem ảnh hiện trường và chỉ đường đến vị trí công tơ.", "map")
+    summary(df)
+    marker_style = st.radio("Kiểu điểm đánh dấu", ["Biểu tượng điểm đo", "Ảnh công tơ"], horizontal=True)
+    valid = df.Lat.between(-90, 90) & df.Lng.between(-180, 180)
+    if (~valid).any():
+        st.warning(f"Có {int((~valid).sum())} hồ sơ chưa có tọa độ hợp lệ; xem tại Cơ sở dữ liệu.")
+    df = df.loc[valid].copy()
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
         # FIX LỖI MẤT Ô TÌM KIẾM: GHIM CHẶT Ô TÌM KIẾM VÀO BỘ NHỚ BẰNG LỆNH key="map_search_box"
         danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
-        kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem, key="map_search_box")
+        kh_can_tim = st.selectbox(" Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem, key="map_search_box")
         
         if kh_can_tim != "-- Hiển thị toàn cảnh --":
             ma_kh_tim = kh_can_tim.split(" | ")[0]
@@ -287,7 +309,7 @@ elif menu == "🗺️ Bản đồ NR-KH":
             if pd.notna(b64_tru) and b64_tru:
                 img_src = f"data:image/jpeg;base64,{b64_tru}"
                 html_tru = f"""
-                <img src="{img_src}" onclick="document.getElementById('modal_tru_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Trụ">
+                <img src="{img_src}" onclick="document.getElementById('modal_tru_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:contain; background:#f1f5f9; border-radius:8px; border: 1px solid #dbe5f0; cursor:zoom-in;" title="Click để phóng to ảnh Trụ">
                 <div id="modal_tru_{idx}" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:9999; cursor:zoom-out; text-align:center;" onclick="this.style.display='none'">
                     <img src="{img_src}" style="max-width:95%; max-height:95%; position:relative; top:50%; transform:translateY(-50%); border: 3px solid white; border-radius: 5px;">
                 </div>
@@ -297,16 +319,20 @@ elif menu == "🗺️ Bản đồ NR-KH":
             if pd.notna(b64_mat) and b64_mat:
                 img_src = f"data:image/jpeg;base64,{b64_mat}"
                 html_mat = f"""
-                <img src="{img_src}" onclick="document.getElementById('modal_mat_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:cover; border: 1px solid #ccc; cursor:zoom-in;" title="Click để phóng to ảnh Mặt Công Tơ">
+                <img src="{img_src}" onclick="document.getElementById('modal_mat_{idx}').style.display='block'" style="width:140px; height:180px; object-fit:contain; background:#f1f5f9; border-radius:8px; border: 1px solid #dbe5f0; cursor:zoom-in;" title="Click để phóng to ảnh Mặt Công Tơ">
                 <div id="modal_mat_{idx}" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:9999; cursor:zoom-out; text-align:center;" onclick="this.style.display='none'">
                     <img src="{img_src}" style="max-width:95%; max-height:95%; position:relative; top:50%; transform:translateY(-50%); border: 3px solid white; border-radius: 5px;">
                 </div>
                 """
             
+            # Escape dữ liệu nhập trước khi dựng HTML trong popup.
+            row = row.copy()
+            for field in ["Ma_Tram", "Ten_Tram", "Ma_KH", "Ten_KH", "Dia_Chi", "So_No", "Vi_Tri_Treo", "So_Tru"]:
+                row[field] = escape(str(row.get(field, "")))
             popup_html = f"""
-            <div style="width:310px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.6;">
-                <div style="background:#546e7a; color:white; padding:5px 10px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
-                    Xem sản lượng
+            <div style="width:310px; font-family: Segoe UI, Arial, sans-serif; font-size: 13px; line-height: 1.7; color:#21364c;">
+                <div style="background:#103660; color:white; padding:12px 14px; border-radius:3px; text-align:center; font-weight:bold; margin-bottom:10px; cursor:pointer;">
+                    Thông tin điểm đo
                 </div>
                 <b>Mã Trạm:</b> {row.get('Ma_Tram', '')}<br>
                 <b>Tên Trạm:</b> {row.get('Ten_Tram', '')}<br>
@@ -318,32 +344,33 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 <b>Tọa độ:</b> (lng: '{row['Lng']}', lat: '{row['Lat']}')<br>
                 <b>Số Trụ:</b> {row.get('So_Tru', '')}<br>
                 <hr style="margin: 10px 0;">
-                <b style="color:#e31837;">📸 Hình ảnh (Ấn vào ảnh để phóng to):</b>
+                <b style="color:#e31837;"> Hình ảnh (Ấn vào ảnh để phóng to):</b>
                 <div style="display:flex; justify-content:center; gap:8px; margin-top:5px; margin-bottom:10px;">
                     {html_tru}
                     {html_mat}
                 </div>
-                <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" 
+                <a href="https://www.google.com/maps/dir/?api=1&destination={row['Lat']},{row['Lng']}" target="_blank" rel="noopener noreferrer" 
                    style="background:#005c9e; color:white; padding:8px 10px; text-decoration:none; border-radius:4px; display:block; text-align:center; font-weight:bold;">
-                   🧭 CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
+                    CHỈ ĐƯỜNG ĐẾN SỐ TRỤ {row.get('So_Tru', '')}
                 </a>
             </div>
             """
             
-            if pd.notna(b64_mat) and b64_mat:
+            if marker_style == "Ảnh công tơ" and pd.notna(b64_mat) and b64_mat:
                 custom_icon = folium.CustomIcon(icon_image=f"data:image/jpeg;base64,{b64_mat}", icon_size=(40, 55), icon_anchor=(20, 55))
             else:
-                custom_icon = folium.Icon(color="blue", icon="info-sign")
+                custom_icon = folium.DivIcon(html=f'<div style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:#07529b;color:white;border:3px solid white;border-radius:50%;box-shadow:0 3px 9px #10366055">{icon("meter",20)}</div>', icon_size=(42,42), icon_anchor=(21,21))
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
         folium_static(m, width=1200, height=600)
 
-elif menu == "📊 Cơ sở dữ liệu":
-    st.markdown("## 📊 DỮ LIỆU ĐỒNG BỘ NR-KH")
+elif menu == "Cơ sở dữ liệu":
+    hero("Cơ sở dữ liệu điểm đo", "Theo dõi hồ sơ công tơ và xuất dữ liệu phục vụ công tác quản lý.", "database")
+    summary(df)
     if not df.empty:
         df_show = df.drop(columns=["Anh_Tru_B64", "Anh_Mat_B64"], errors='ignore')
         st.dataframe(df_show, use_container_width=True)
-        st.download_button("📥 Xuất file Excel/CSV", df_show.to_csv(index=False).encode('utf-8-sig'), "DuLieu_EVN_NRKH.csv", "text/csv")
+        st.download_button("Tải dữ liệu CSV (mở bằng Excel)", df_show.to_csv(index=False).encode('utf-8-sig'), "DuLieu_EVN_NRKH.csv", "text/csv")
     else:
         st.info("Chưa có dữ liệu.")
