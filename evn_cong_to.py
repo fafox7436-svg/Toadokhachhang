@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static  # KHÔI PHỤC LẠI HÀM NÀY ĐỂ TÌM KIẾM HOẠT ĐỘNG
+from streamlit_folium import folium_static  
 from PIL import Image, ExifTags
 import easyocr
 import re
@@ -15,7 +15,7 @@ from datetime import datetime
 import requests
 
 # =====================================================================
-GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycby6206dFXWo6WoFQrgQCtFGvdVxOs8TXnZ34rYWf7F16SLHud8gtDRkQc1h66PxeWkC/exec"
+GOOGLE_SHEET_URL = "https://script.google.com/macros/s/......./exec"
 # =====================================================================
 
 st.set_page_config(page_title="Hệ Sinh Thái Định Vị EVN SPC", page_icon="⚡", layout="wide")
@@ -212,8 +212,8 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         
     xac_nhan_ghi_de = True
     if is_exist and in_ma_kh != "":
-        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu.")
-        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận CẬP NHẬT thông tin mới")
+        st.warning(f"⚠️ Khách hàng {in_ma_kh} đã có. Lưu sẽ ghi đè dữ liệu (Phù hợp cho Thay định kỳ/Hư hỏng).")
+        xac_nhan_ghi_de = st.checkbox("✅ Tôi xác nhận CẬP NHẬT thông tin & tọa độ mới")
 
     if st.button("⚡ LƯU & ĐỒNG BỘ", type="primary", use_container_width=True):
         if not in_ma_kh or not in_ten_kh:
@@ -221,7 +221,7 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
         elif not in_ma_tram or not in_ten_tram:
             st.error("Thiếu Thông tin Trạm (Mã hoặc Tên)!")
         elif not upload_tru and not upload_mat:
-            st.error("Vui lòng chụp ít nhất 1 ảnh để lấy tọa độ!")
+            st.error("Vui lòng chụp ít nhất 1 ảnh để lấy tọa độ mới!")
         elif is_exist and not xac_nhan_ghi_de:
             st.error("Vui lòng tick xác nhận ghi đè/cập nhật!")
         else:
@@ -248,28 +248,26 @@ if menu == "📸 Cập nhật Công tơ (Đầy đủ)":
                         "Thoi_Gian": thoi_gian, "Anh_Tru_B64": b64_tru, "Anh_Mat_B64": b64_mat
                     }
                     
+                    # FIX LỖI KO CẬP NHẬT TỌA ĐỘ: XÓA SỔ DÒNG CŨ VÀ TẠO DÒNG MỚI HOÀN TOÀN
                     if is_exist:
-                        idx = df[df['Ma_KH'] == in_ma_kh].index[0]
-                        for key, val in row_data.items():
-                            df[key] = df[key].astype(object) 
-                            df.at[idx, key] = val
-                    else:
-                        df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
+                        df = df[df['Ma_KH'] != in_ma_kh]
+                        
+                    df = pd.concat([df, pd.DataFrame([row_data])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
                     
-                    st.success(f"✅ Thành công! Đã định vị địa chỉ: **{diachi_chitiet}**")
+                    st.success(f"✅ Thành công! Đã cập nhật tọa độ & địa chỉ mới: **{diachi_chitiet}**")
                     st.balloons()
                 else:
-                    st.error("❌ Không thể lấy tọa độ từ ảnh này.")
+                    st.error("❌ Hình ảnh của bạn không có thông tin GPS. Hãy bật định vị khi chụp!")
 
 elif menu == "🗺️ Bản đồ NR-KH":
     st.markdown("## 🗺️ SƠ ĐỒ ĐƠN TUYẾN - TÍCH HỢP AI")
     if df.empty:
         st.warning("Chưa có dữ liệu.")
     else:
-        # TÍNH NĂNG TÌM KIẾM ĐÃ SỐNG LẠI!
+        # FIX LỖI MẤT Ô TÌM KIẾM: GHIM CHẶT Ô TÌM KIẾM VÀO BỘ NHỚ BẰNG LỆNH key="map_search_box"
         danh_sach_tim_kiem = ["-- Hiển thị toàn cảnh --"] + [f"{row['Ma_KH']} | {row['Ten_KH']}" for _, row in df.iterrows()]
-        kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem)
+        kh_can_tim = st.selectbox("🔍 Gõ Mã hoặc Tên Khách hàng để bản đồ tự động định vị:", danh_sach_tim_kiem, key="map_search_box")
         
         if kh_can_tim != "-- Hiển thị toàn cảnh --":
             ma_kh_tim = kh_can_tim.split(" | ")[0]
@@ -285,7 +283,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
             b64_tru = row.get("Anh_Tru_B64", "")
             b64_mat = row.get("Anh_Mat_B64", "")
             
-            # CÔNG NGHỆ LIGHTBOX CSS (BẤM VÀO ẢNH PHÓNG TO NGAY TRONG BẢN ĐỒ, CHỐNG TRÌNH DUYỆT CHẶN)
             html_tru = ""
             if pd.notna(b64_tru) and b64_tru:
                 img_src = f"data:image/jpeg;base64,{b64_tru}"
@@ -340,7 +337,6 @@ elif menu == "🗺️ Bản đồ NR-KH":
                 
             folium.Marker([row['Lat'], row['Lng']], popup=folium.Popup(popup_html, max_width=350), icon=custom_icon).add_to(cluster)
             
-        # DÙNG LẠI FOLIUM STATIC ĐỂ Ô TÌM KIẾM ĐƯỢC PHÉP ĐIỀU KHIỂN BẢN ĐỒ
         folium_static(m, width=1200, height=600)
 
 elif menu == "📊 Cơ sở dữ liệu":
